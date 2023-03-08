@@ -21,8 +21,10 @@ class Interface:
         self.adc.set_bit_rate(18)
 
         self.iobus = IOPi(0x20)
-        for ii in range(1: 17):  # only outputs
+        for ii in range(1, 17):  # only outputs
             self.iobus.set_pin_direction(ii, 0)
+
+    # --- High level functions ---
 
     def set_pin_layout(self) -> None:
         "Defines the pins for the pumps, lights etc..."
@@ -32,8 +34,77 @@ class Interface:
         self.ODs = np.arange(1, 5)
         self.weight_sensors = np.arange(5, 9)
 
+    def measure_OD(self, vial: int, lag: float = 0.01, nb_measures: int = 1) -> float:
+        """Measures the mean OD over nb_measures for the given vial.
+
+        Args:
+            vial: vial number.
+            lag: delay between measures (in seconds). Defaults to 0.01.
+            nb_measures: number of measures. Defaults to 1.
+
+        Returns:
+            Mean of the measured ODs.
+        """
+        values = []
+        for ii in range(nb_measures):
+            time.sleep(lag)
+            values += [self._voltage_to_OD(self._measure_voltage(self._OD_to_pin(vial)))]
+        return np.mean(values)
+
+    def inject_volume(self, pump: int, volume: float) -> None:
+        """Run the pump to inject a given volume in mL.
+
+        Args:
+            pump: pump number
+            volume: volume (in mL)
+        """
+        dt = self._volume_to_time(pump, volume)
+        self._run_pump(pump, dt)
+
+    def measure_weight(self, vial: int, lag: float = 0.01, nb_measures: int = 1) -> None:
+        """Measures the mean weight (in grams) over nb_measures from given vial.
+
+        Args:
+            vial: vial number.
+            lag: delay between measures (in second). Defaults to 0.01.
+            nb_measures: number of measures. Defaults to 1.
+
+        Returns:
+            Mean of the measured weights.
+        """
+        values = []
+        for ii in range(nb_measures):
+            time.sleep(lag)
+            values += [self._voltage_to_weight(self._measure_voltage(self._WS_to_pin(vial)))]
+        return np.mean(values)
+    
+    def remove_waste(self, volume:float) -> None:
+        """Runs the waste pump to remove a given volume.
+
+        Args:
+            volume: volume (in mL).
+        """
+        self._run_pump(self.waste_pump, self._volume_to_time(volume))
+
+    def wait_mixing(self, dt: float):
+        """Wait mixing for a given amount of time.
+
+        Args:
+            dt: time (in seconds).
+        """
+        time.sleep(dt)
+
+    def switch_light(self, state: bool) -> None:
+        """Turns lights to the given state. True is on, False is off.
+
+        Args:
+            state: True turns lights on, False turns light off.
+        """
+        self.iobus.write_pin(self.lights, state)
+
     # --- Medium level functions ---
-    def _volume_to_time(self, pump:int, volume:float) -> float:
+
+    def _volume_to_time(self, pump: int, volume: float) -> float:
         "For now it's useless, just returns 1 second always"
         return 1.0
 
