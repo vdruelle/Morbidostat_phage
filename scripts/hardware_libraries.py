@@ -1,6 +1,6 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
-from smbus2 import SMBus
+from smbus import SMBus
 import time
 import re
 import platform
