@@ -15,7 +15,7 @@ class Interface:
         self.ODs = []
         self.lights = None
         self.waste_pump = None
-        self.vials = np.arange(1,16).tolist()
+        self.vials = None
 
         self.adc = ADCPi(0x68, 0x69, 16)
         self.adc.set_pga(1)
@@ -25,18 +25,22 @@ class Interface:
         for ii in range(1, 17):  # only outputs
             self.iobus.set_pin_direction(ii, 0)
 
-        self.set_pin_layout()
+        self.set_hardware_connections()
         self.switch_light(False)
 
-    # --- High level functions ---
+    # --- Hardware setup ---
 
-    def set_pin_layout(self) -> None:
-        "Defines the pins for the pumps, lights etc..."
+    def set_hardware_connections(self) -> None:
+        """This function defines the physical connection from the different components to the pin of the RPi.
+        """
+        self.vials = list(range(1,3))
         self.lights = 1
         self.waste_pump = 2
-        self.pumps = np.arange(3, 9).tolist()
-        self.ODs = np.arange(1, 5).tolist()
-        self.weight_sensors = np.arange(5, 9).tolist()
+        self.pumps = list(range(3, 9))
+        self.ODs = list(range(1, 5))
+        self.weight_sensors = list(range(5, 9))
+
+    # --- High level functions ---
 
     def measure_OD(self, vial: int, lag: float = 0.01, nb_measures: int = 1) -> float:
         """Measures the mean OD over nb_measures for the given vial.
@@ -53,8 +57,8 @@ class Interface:
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            OD = self._vial_to_OD(vial)
-            values += [self._voltage_to_OD(OD, self._measure_voltage(self._OD_to_pin(vial)))]
+            od = self._vial_to_OD(vial)
+            values += [self._voltage_to_OD(od, self._measure_voltage(self._OD_to_pin(od)))]
         return np.mean(values)
 
     def inject_volume(self, pump: int, volume: float) -> None:
