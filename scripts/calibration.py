@@ -10,17 +10,20 @@ from interface import Interface
 def calibrate_OD(
         interface: Interface,
         filename: str,
+        nb_standards: int,
         vials: list = list(range(1, 16)),
         nb_measures: int = 10,
-        lag: float = 0.1) -> np.ndarray:
-    """Function to perform the calibration of the OD measurment. It is done by measuring some standard with 
+        lag: float = 0.1,
+        voltage_threshold: float = 4.8) -> np.ndarray:
+    """Function to perform the calibration of the OD measurment. It is done by measuring some standard with
     known OD in each of the vial slots. It is suggested to use 4 standards that span the whole range of
     measurable OD.
     Once the procedure is complete, shows a plot with the results and saves a file with the fit parameters.
 
     Args:
         interface: Interface object from the interface.py file.
-        filename: name of the save file. 
+        filename: name of the save file.
+        nb_standards: number of OD standard to calibrate on.
         vials: list of vials to calibrate. Defaults to list(range(1, 16)).
         nb_measure: number of voltage measures to average for each data point. Defaults to 10.
         lag: time between voltage measures in seconds. Defaults to 0.1.
@@ -28,69 +31,59 @@ def calibrate_OD(
     Returns:
         fit_parameters: the fit parameters from the fit of the OD to voltage relation.
     """
+    assert nb_standards >= 2, "At least 2 OD standards are needed for the calibration."
+
     ODs = []
-    voltages = []
-    no_valid_standard = True
-    all_cycles_measured = False
+    voltages = np.zeros((nb_standards, len(vials)))
 
-    while all_cycles_measured == False:
+    # Measuring the voltage for all vial + OD standard combo
+    for ii in range(nb_standards):  # iterating over all standards
+        no_valid_standard = True
         while no_valid_standard:
-            s = input("Enter OD of standard [q to quit]: ")
-            if s == 'q':
-                print("Aborting calibration")
-                all_cycles_measured = True
-                break
-
             try:
-                cur_OD = float(s)
+                print()
+                cur_OD = input(f"Enter OD of standard {ii+1}: ")
+                ODs.append(float(cur_OD))
                 no_valid_standard = False
             except BaseException:
                 print("invalid entry")
 
-        if not all_cycles_measured:  # prompt user for 15 measurements while q is not pressed
-            ODs.append(cur_OD)
-            voltages.append(np.zeros(len(vials)))
-            for vi, vial in enumerate(vials):
-                OKstr = input("Place OD standard in receptible " + str(vial) +
-                              ", press enter when done")
+        for jj, vial in enumerate(vials):  # iterating over all vials for the current OD standard
+            input("   Place OD standard in vial slot " + str(vial) + ", press enter when done")
+            interface.switch_light(True)
+            voltages[ii][jj] = interface.measure_OD(vial, lag, nb_measures)  # Measuring voltage
+            interface.switch_light(False)
+            print(f"   Mean voltage measured: {voltages[ii][jj]}V")
 
-                interface.switch_light(True)
-                voltages[-1][vi] = interface.measure_OD(vial, lag, nb_measures)
-                interface.switch_light(False)
-                print(vial, "measurement ", voltages[-1][vi])
-            no_valid_standard = True
+    print()
+    print("Calibration manipulation complete. Calculating voltage -> OD conversion.")
+    ODs = np.array(ODs)
+    fit_parameters = np.zeros((len(vials), 2))
 
-    if len(ODs) > 1:
-        print("Collected " + str(len(ODs)) + " OD voltage pairs, calculating voltage -> OD  conversion")
-        ODs = np.array(ODs)
-        voltages = np.array(voltages).T
-        fit_parameters = np.zeros((len(vials), 2))
-        for vi, vial in enumerate(vials):
-            good_measurements = voltages[vi, :] < 4.8
-            if good_measurements.sum() > 1:
-                slope, intercept, r, p, stderr = linregress(
-                    ODs[good_measurements], voltages[vi, good_measurements])
-            else:
-                print("less than 2 good measurements, also using saturated measurements for vial" + str(vial))
-                slope, intercept, r, p, stderr = linregress(ODs, voltages[vi, :])
-            fit_parameters[vi, :] = [slope, intercept]
-            
+    # Computing the fit for all vials
+    for ii, vial in enumerate(vials):
+        good_measurements = voltages[:, ii] < voltage_threshold
+        if good_measurements.sum() > 1:
+            slope, intercept, _, _, _ = linregress(ODs[good_measurements], voltages[good_measurements, ii])
+        else:
+            print("Less than 2 good measurements, also using saturated measurements for vial" + str(vial))
+            slope, intercept, _, _, _ = linregress(ODs, voltages[:, ii])
+        fit_parameters[ii, 0] = slope
+        fit_parameters[ii, 1] = intercept
 
-        # make figure showing calibration
-        plt.figure()
-        plt.plot(ODs, voltages.T, '.-')
-        plt.xlabel('OD standard [a.u.]')
-        plt.ylabel('Voltage [V]')
-        plt.show()
+    print(f"Calibration completed. Saving results in file {filename} and plotting results.")
+    np.savetxt(filename, fit_parameters)
 
-        np.savetxt(filename, fit_parameters)
-
-    else:
-        print("need measurements for at least two OD standards")
+    # make figure showing calibration
+    plt.figure()
+    plt.plot(ODs, voltages, '.-')
+    plt.xlabel('OD standard [a.u.]')
+    plt.ylabel('Voltage [V]')
+    plt.show()
 
     return fit_parameters
 
 
 if __name__ == "__main__":
     interface = Interface()
-    calibrate_OD(interface, "test.txt", [1,2])
+    calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2], nb_measures=1)
