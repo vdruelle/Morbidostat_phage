@@ -10,8 +10,8 @@ from hardware_libraries import ADCPi, IOPi
 class Interface:
     def __init__(self) -> None:
         "Creates the Interface class"
-        self.pumps = []
-        self.weight_sensors = []
+        self.pumps = []  # self.pumps[1] gives you the pin corresponding to the first pump
+        self.weight_sensors = []  # self.weight_sensors[1] gives you the pin corresponding to the first WS
         self.ODs = []
         self.lights = None
         self.waste_pump = None
@@ -33,7 +33,7 @@ class Interface:
     def set_hardware_connections(self) -> None:
         """This function defines the physical connection from the different components to the pin of the RPi.
         """
-        self.vials = list(range(1,3))
+        self.vials = list(range(1, 3))
         self.lights = 1
         self.waste_pump = 2
         self.pumps = list(range(3, 9))
@@ -57,8 +57,7 @@ class Interface:
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            od = self._vial_to_OD(vial)
-            values += [self._voltage_to_OD(od, self._measure_voltage(self._OD_to_pin(od)))]
+            values += [self._voltage_to_OD(vial, self._measure_voltage(self._OD_to_pin(vial)))]
         return np.mean(values)
 
     def inject_volume(self, pump: int, volume: float) -> None:
@@ -86,8 +85,7 @@ class Interface:
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            WS = self._vial_to_weight_sensor(vial)
-            values += [self._voltage_to_weight(WS, self._measure_voltage(self._WS_to_pin(vial)))]
+            values += [self._voltage_to_weight(vial, self._measure_voltage(self._WS_to_pin(vial)))]
         return np.mean(values)
 
     def remove_waste(self, volume: float) -> None:
@@ -97,7 +95,7 @@ class Interface:
             volume: volume (in mL).
         """
         self.iobus.write_pin(self.waste_pump, 1)
-        time.sleep(self._volume_to_time(self.waste_pump, volume))
+        time.sleep(volume)
         self.iobus.write_pin(self.waste_pump, 0)
 
     def wait_mixing(self, dt: float):
@@ -122,21 +120,20 @@ class Interface:
 
     def _volume_to_time(self, pump: int, volume: float) -> float:
         "For now it's useless, just returns 1 second always"
-        assert pump in [self.waste_pump] + \
-            self.pumps, f"Pump {pump} is not in available pumps: {[self.waste_pump] + self.pumps}"
-            
+        available_pumps = list(range(1, len(self.pumps) + 1))
+        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
+
         return volume
 
-    def _voltage_to_OD(self, OD: int, voltage: float) -> float:
+    def _voltage_to_OD(self, vial: int, voltage: float) -> float:
         "For now this useless, just returns the raw voltage"
-        assert OD in self.ODs, f"OD {OD} is not in available ODs: {self.ODs}"
+        assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
         return voltage
 
-    def _voltage_to_weight(self, weight_sensor: int, voltage: float) -> float:
+    def _voltage_to_weight(self, vial: int, voltage: float) -> float:
         "For now this is useless, just returns the raw voltage"
-        assert weight_sensor in self.weight_sensor, \
-            f"weight_sensors {weight_sensor} is not in available weight sensors: {self.weight_sensors}"
+        assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
         return voltage
 
@@ -147,25 +144,26 @@ class Interface:
             pump: pump number
             dt: duration
         """
-        
+
         self.iobus.write_pin(self._pump_to_pin(pump), 1)
         time.sleep(dt)
         self.iobus.write_pin(self._pump_to_pin(pump), 0)
 
     # --- Low level functions ---
 
-    def _pump_to_pin(self, pump_number: int) -> int:
+    def _pump_to_pin(self, pump: int) -> int:
         """Return the pin number associated to the pump number.
 
         Args:
-            pump_number: number associated to the pump
+            pump: number associated to the pump
 
         Returns:
             pin associated to the pump
         """
-        assert pump_number in self.pumps, f"Pump {pump_number} is not in available pumps: {self.pumps}"
+        available_pumps = list(range(1, len(self.pumps) + 1))
+        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
 
-        return self.pumps[pump_number - 1]
+        return self.pumps[pump - 1]
 
     def _WS_to_pin(self, vial_number: int) -> int:
         """Returns the ADCpi pin associated to the vial weight sensor.
@@ -192,32 +190,6 @@ class Interface:
         assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
 
         return self.ODs[vial_number - 1]
-
-    def _vial_to_OD(self, vial_number: int) -> int:
-        """Returns the OD number associated to the vial number.
-
-        Args:
-            vial_number: number associated to the vial.
-
-        Returns:
-            OD number associated to the vial.
-        """
-        assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
-
-        return self.ODs[vial_number - 1]
-
-    def _vial_to_weight_sensor(self, vial_number: int) -> int:
-        """Returns the weight sensor number associated to the vial number.
-
-        Args:
-            vial_number: number associated to the vial.
-
-        Returns:
-            Weight sensor number associated to the vial.
-        """
-        assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
-
-        return self.weight_sensors[vial_number - 1]
 
     def _measure_voltage(self, adc_pin: int) -> float:
         """Measures voltage from the given pin.

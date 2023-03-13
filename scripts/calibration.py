@@ -79,29 +79,30 @@ def calibrate_OD(
     plt.show()
 
 
-def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float = 10):
+def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float = 30):
     """Function to perform the calibration of the pumps. For now it is done by connecting all the pumps and
     putting their inlet in water and their outlet on the scale. Then each pump is run for dt seconds and the
-    user is asked for the new weight. Pumping rates are inferred from the differenc in weights.
+    user is asked for the new weight. Pumping rates are inferred from the difference in weights.
 
     Args:
         interface: Interface object from interface.py file.
         filename: name of the save file.
         pumps: list of the pumps to calibrate.
-        dt: Pumping time for the calibration. Defaults to 10.
+        dt: Pumping time for the calibration in seconds. Defaults to 10.
     """
     weights = np.zeros((2, len(pumps)))  # Pumps are columns, first line is weight before and second is after
 
     print(f"Starting pump calibration for pumps {pumps}.")
     print("Put inlet of all pumps in water. Put outlet of pumps in vial on a balance")
 
-    input("When the setup is ready press enter. It will run all the pumps for 10s to fill the tubing.")
-    for pump in enumerate(pumps):
-        interface._run_pump(pump, 10)
+    input("When the setup is ready press enter. It will run all the pumps for 20s to fill the tubing.")
+    for pump in pumps:
+        print(f"Running pump {pump}")
+        interface._run_pump(pump, 20)
 
     weight = input("Initial weight of vial: ")
     for ii, pump in enumerate(pumps):  # iterate over all pumps and asks for weights
-        print(f"Calibrating pump {pump}:")
+        print(f"Calibrating pump {pump}")
         weights[0, ii] = weight
         interface._run_pump(pump, dt)
         weight = input("    Measured weight of vial: ")
@@ -111,7 +112,7 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     print("Calibration manipulation complete. Computing pumping rate.")
 
     # calculate pump_rate and save to file
-    pump_rates = (weight[1,:] - weight[0,:]) / dt
+    pump_rates = (weights[1,:] - weights[0,:]) / dt # g.s^-1 <=> mL*s^-1
 
     print(f"Saving data in {filename}.")
     np.savetxt(filename, pump_rates)
@@ -119,4 +120,5 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
 
 if __name__ == "__main__":
     interface = Interface()
-    calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2], nb_measures=1)
+    # calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2], nb_measures=1)
+    calibrate_pumps(interface, "test.txt", [1,2])
