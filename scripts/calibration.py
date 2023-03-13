@@ -112,13 +112,80 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     print("Calibration manipulation complete. Computing pumping rate.")
 
     # calculate pump_rate and save to file
-    pump_rates = (weights[1,:] - weights[0,:]) / dt # g.s^-1 <=> mL*s^-1
+    pump_rates = (weights[1, :] - weights[0, :]) / dt  # g.s^-1 <=> mL*s^-1
 
     print(f"Saving data in {filename}.")
     np.savetxt(filename, pump_rates)
 
 
+def calibrate_weight_sensors(
+        interface: Interface,
+        filename: str,
+        pump_times: int = [20, 40, 60],
+        pump: int = 1,
+        pumping_rate: float = 9e-2,
+        vials: list = list(range(1, 16)),
+        empty_vial_weight: float = 42,
+        nb_measures: int = 10,
+        lag: float = 0.1,
+        voltage_threshold: float = 4.8) -> None:
+
+    assert len(pump_times) > 2, "Cannot calibrate weight sensors with less than 2 pumping times."
+
+    print(f"Starting calibration for weight sensors of vials {vials}.")
+    input(f"Put the inlet and outlet of pump {pump} in water to pre-fill the tubes, then press enter.")
+
+    print(f"Running pump {pump} for 15 seconds.")
+    interface._run_pump(pump, 15)
+
+    print(f"Pre-filling done.")
+    voltages = np.zeros((len(pump_times) + 1, len(vials)))
+
+    for ii, vial in enumerate(vials):
+        print()
+        input(f"Put outlet of pump {pump} in the vial {vial}, then press enter.")
+        tot_time = 0
+        voltages[0, ii] = interface.measure_weight(vial, lag, nb_measures)  # empty vial
+        print(f"    Empty vial voltage: {voltages[0,ii]}")
+
+        for jj, t in enumerate(pump_times):
+            dt = t - tot_time
+            interface._run_pump(pump, dt)
+            time.sleep(1)
+            voltages[jj + 1, ii] = interface.measure_weight(vial)  # after pumping
+            tot_time = t
+            print(f"    Measuring voltage after {tot_time}: {voltages[jj+1, ii]}")
+
+        print(f"Calibration of weight sensor {vial} done.")
+
+    # Computing the fit for all vials
+    weights = np.array([0] + pump_times) * pumping_rate + empty_vial_weight # these are in grams
+    fit_parameters = np.zeros((len(vials), 2))  # first columns are slope, second are intercepts
+
+    for ii, vial in enumerate(vials):
+        good_measurements = voltages[:, ii] < voltage_threshold
+        if good_measurements.sum() > 1:
+            slope, intercept, _, _, _ = linregress(
+                weights[good_measurements], voltages[good_measurements, ii])
+        else:
+            print("Less than 2 good measurements, also using saturated measurements for vial" + str(vial))
+            slope, intercept, _, _, _ = linregress(weights, voltages[:, ii])
+        fit_parameters[ii, 0] = slope
+        fit_parameters[ii, 1] = intercept
+
+    print(f"Calibration completed. Saving results in file {filename} and plotting results.")
+    np.savetxt(filename, fit_parameters)
+
+    # make figure showing calibration
+    plt.figure()
+    plt.plot(weights, voltages, '.-')
+    plt.xlabel('OD standard [a.u.]')
+    plt.ylabel('Voltage [V]')
+    plt.show()
+
+
 if __name__ == "__main__":
     interface = Interface()
-    # calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2], nb_measures=1)
-    calibrate_pumps(interface, "test.txt", [1,2])
+    # calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2])
+    # calibrate_pumps(interface, "test.txt", [1,2])
+    calibrate_weight_sensors(interface, "test.txt", vials=[1, 2])

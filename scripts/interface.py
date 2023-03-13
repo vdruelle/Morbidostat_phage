@@ -207,5 +207,7 @@ class Interface:
         return self.adc.read_voltage(adc_pin)
 
 
+## TODO: all pumps off
+
 if __name__ == "__main__":
     tmp = Interface()
