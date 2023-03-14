@@ -185,7 +185,10 @@ def calibrate_weight_sensors(
 
 
 if __name__ == "__main__":
-    interface = Interface()
-    # calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2])
-    # calibrate_pumps(interface, "test.txt", [1,2])
-    calibrate_weight_sensors(interface, "test.txt", vials=[1, 2])
+    try:
+        interface = Interface()
+        # calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2])
+        # calibrate_pumps(interface, "test.txt", [1,2])
+        # calibrate_weight_sensors(interface, "test.txt", vials=[1, 2])
+    finally: # This executes among program exiting (error or pressing ctrl+C)
+        interface.turn_off()

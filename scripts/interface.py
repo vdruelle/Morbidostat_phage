@@ -116,6 +116,15 @@ class Interface:
 
         self.iobus.write_pin(self.lights, state)
 
+    def turn_off(self) -> None:
+        """Turns everything controlled by the interface to off state.
+        """
+        for pump in range(1, len(self.pumps) + 1):
+            self.iobus.write_pin(self._pump_to_pin(pump), 0)
+        self.switch_light(False)
+        self.iobus.write_pin(self.waste_pump, 0)
+
+
     # --- Medium level functions ---
 
     def _volume_to_time(self, pump: int, volume: float) -> float:
@@ -205,9 +214,6 @@ class Interface:
             adc_pin in self.ODs), f"ADC pin {adc_pin} isn't in defined WS and ODs"
 
         return self.adc.read_voltage(adc_pin)
-
-
-## TODO: all pumps off
 
 if __name__ == "__main__":
     tmp = Interface()
