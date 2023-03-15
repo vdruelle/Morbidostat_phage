@@ -1,10 +1,13 @@
 # Helper file to calibrate the hardware
 
 import time
+import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 from interface import Interface
+
+CALI_PATH = "calibrations/"
 
 
 def calibrate_OD(
@@ -19,6 +22,7 @@ def calibrate_OD(
     known OD in each of the vial slots. It is suggested to use 4 standards that span the whole range of
     measurable OD.
     Once the procedure is complete, shows a plot with the results and saves a file with the fit parameters.
+    In the savefile, first column is the slope, second column is the intercept of the voltage(OD) curve.
 
     Args:
         interface: Interface object from the interface.py file.
@@ -27,9 +31,7 @@ def calibrate_OD(
         vials: list of vials to calibrate. Defaults to list(range(1, 16)).
         nb_measure: number of voltage measures to average for each data point. Defaults to 10.
         lag: time between voltage measures in seconds. Defaults to 0.1.
-
-    Returns:
-        fit_parameters: the fit parameters from the fit of the OD to voltage relation.
+        voltage_threshold: Used to estimate if there is overflow and exclude data point [V]. Defaults to 4.8.
     """
     assert nb_standards >= 2, "At least 2 OD standards are needed for the calibration."
 
@@ -69,7 +71,7 @@ def calibrate_OD(
         fit_parameters[ii, 1] = intercept
 
     print(f"Calibration completed. Saving results in file {filename} and plotting results.")
-    np.savetxt(filename, fit_parameters)
+    np.savetxt(CALI_PATH + filename, fit_parameters)
 
     # make figure showing calibration
     plt.figure()
@@ -83,6 +85,7 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     """Function to perform the calibration of the pumps. For now it is done by connecting all the pumps and
     putting their inlet in water and their outlet on the scale. Then each pump is run for dt seconds and the
     user is asked for the new weight. Pumping rates are inferred from the difference in weights.
+    Saves the pumping rate in a file with the given filename.
 
     Args:
         interface: Interface object from interface.py file.
@@ -115,7 +118,7 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     pump_rates = (weights[1, :] - weights[0, :]) / dt  # g.s^-1 <=> mL*s^-1
 
     print(f"Saving data in {filename}.")
-    np.savetxt(filename, pump_rates)
+    np.savetxt(CALI_PATH + filename, pump_rates)
 
 
 def calibrate_weight_sensors(
@@ -129,6 +132,22 @@ def calibrate_weight_sensors(
         nb_measures: int = 10,
         lag: float = 0.1,
         voltage_threshold: float = 4.8) -> None:
+    """Function to perform the calibration of the weight sensors. This has to be done after the calibration
+    of the pumps as it uses the pumps to input a certain amount of liquid, and then calibrate readings
+    depending on the increase in wieght.
+
+    Args:
+        interface: Interface class defined in the interface.py file.
+        filename: name of the savefile.
+        pump_times: Pumping time for calibration in seconds. Defaults to [20, 40, 60].
+        pump: Pump used for calibration. Defaults to 1.
+        pumping_rate: Pumping rate of the pump. Defaults to 9e-2 mL*s^-1.
+        vials: vials weight sensors to calibrate. Defaults to list(range(1, 16)).
+        empty_vial_weight: Weight of empty vial in grams. Defaults to 42.
+        nb_measures: Number of voltage measures for each data point. Defaults to 10.
+        lag: Time between the voltage measures in seconds. Defaults to 0.1.
+        voltage_threshold: Used to estimate if there is overflow and exclude data point [V]. Defaults to 4.8.
+    """
 
     assert len(pump_times) > 2, "Cannot calibrate weight sensors with less than 2 pumping times."
 
@@ -159,7 +178,7 @@ def calibrate_weight_sensors(
         print(f"Calibration of weight sensor {vial} done.")
 
     # Computing the fit for all vials
-    weights = np.array([0] + pump_times) * pumping_rate + empty_vial_weight # these are in grams
+    weights = np.array([0] + pump_times) * pumping_rate + empty_vial_weight  # these are in grams
     fit_parameters = np.zeros((len(vials), 2))  # first columns are slope, second are intercepts
 
     for ii, vial in enumerate(vials):
@@ -174,7 +193,7 @@ def calibrate_weight_sensors(
         fit_parameters[ii, 1] = intercept
 
     print(f"Calibration completed. Saving results in file {filename} and plotting results.")
-    np.savetxt(filename, fit_parameters)
+    np.savetxt(CALI_PATH + filename, fit_parameters)
 
     # make figure showing calibration
     plt.figure()
@@ -184,11 +203,42 @@ def calibrate_weight_sensors(
     plt.show()
 
 
+def group_calibrations(cali_OD: str, cali_pumps: str, cali_WS: str, output: str):
+    fits_OD = np.load(CALI_PATH + cali_OD)
+    rate_pumps = np.load(CALI_PATH + cali_pumps)
+    fits_WS = np.load(CALI_PATH + cali_WS)
+
+    cali_OD = {}
+    for ii in range(fits_OD.shape[0]):
+        pass
+
+
 if __name__ == "__main__":
     try:
         interface = Interface()
-        # calibrate_OD(interface, "test.txt", nb_standards=3, vials=[1, 2])
-        # calibrate_pumps(interface, "test.txt", [1,2])
-        # calibrate_weight_sensors(interface, "test.txt", vials=[1, 2])
-    finally: # This executes among program exiting (error or pressing ctrl+C)
+        # calibrate_OD(interface, "OD.npy", nb_standards=3, vials=[1, 2])
+        # calibrate_pumps(interface, "pumps.npy", [1,2])
+        # calibrate_weight_sensors(interface, "WS.npy", vials=[1, 2])
+        # group_calibrations("OD.npy", "pumps.npy", "WS.npy", "14-03.yml")
+
+        cali_OD = "OD.txt"
+        cali_pumps = "pumps.txt"
+        cali_WS = "WS.txt"
+        fits_OD = np.loadtxt(cali_OD)
+        rate_pumps = np.loadtxt(cali_pumps)
+        # fits_WS = np.loadtxt(cali_WS)
+
+        calibration_dict = {"OD": {}, "pumps": {}, "WS": {}}
+
+        cali_OD = {}
+        for ii in range(fits_OD.shape[0]):
+            cali_OD[f"vial {ii}"] = {"slope": fits_OD[ii, 0], "intercept": fits_OD[ii, 1]}
+        calibration_dict["OD"] = cali_OD
+
+        cali_pumps = {}
+        for ii in range(rate_pumps.shape[0]):
+            cali_pumps[f"pump {ii}"] = {"rate": rate_pumps[ii]}
+        calibration_dict["pumps"] = cali_pumps
+
+    finally:  # This executes among program exiting (error or pressing ctrl+C)
         interface.turn_off()
