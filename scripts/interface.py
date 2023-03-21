@@ -4,6 +4,7 @@
 
 import numpy as np
 import time
+import yaml
 from hardware_libraries import ADCPi, IOPi
 
 
@@ -17,6 +18,8 @@ class Interface:
         self.waste_pump = None
         self.vials = None
 
+        self.calibration = None
+
         self.adc = ADCPi(0x68, 0x69, 16)
         self.adc.set_pga(1)
         self.adc.set_bit_rate(18)
@@ -26,7 +29,8 @@ class Interface:
             self.iobus.set_pin_direction(ii, 0)
 
         self.set_hardware_connections()
-        self.switch_light(False)
+        self.load_calibration("03-21-15h-06min.yaml")
+        self.turn_off()
 
     # --- Hardware setup ---
 
@@ -39,6 +43,24 @@ class Interface:
         self.pumps = list(range(3, 9))
         self.ODs = list(range(1, 5))
         self.weight_sensors = list(range(5, 9))
+
+    def load_calibration(self, file) -> None:
+        """Load the calibration file, process it and saves it in the Interface class.
+
+        Args:
+            file: calibration file name including extension (ex: '03-21-15h-06min.yaml').
+        """
+
+        # Opening file as a dictionary
+        with open("calibrations/" + file, 'r') as stream:
+            self.calibration = yaml.load(stream, Loader=yaml.loader.BaseLoader)
+
+        # Converting values from string to floats
+        for key1 in self.calibration.keys():
+            for key2 in self.calibration[key1].keys():
+                for key3 in self.calibration[key1][key2].keys():
+                    self.calibration[key1][key2][key3]["value"] = float(self.calibration[key1][key2][key3]["value"])
+
 
     # --- High level functions ---
 
@@ -128,30 +150,63 @@ class Interface:
     # --- Medium level functions ---
 
     def _volume_to_time(self, pump: int, volume: float) -> float:
-        "For now it's useless, just returns 1 second always"
+        """Uses the calibration of the pump to convert a volume in mL to a pumping duration in seconds.
+
+        Args:
+            pump: pump number.
+            volume: volume to pump in mL.
+
+        Returns:
+            t: time (in seconds) to pump the given volume.
+        """
         available_pumps = list(range(1, len(self.pumps) + 1))
         assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
 
-        return volume
+        t = volume/self.calibration["pumps"][f"pump {pump}"]["value"]
+        return t
 
     def _voltage_to_OD(self, vial: int, voltage: float) -> float:
-        "For now this useless, just returns the raw voltage"
+        """Uses the calibration to convert the voltage measured to an OD value.
+
+        Args:
+            vial: vial number.
+            voltage: voltage measured in Volts.
+
+        Returns:
+            OD: OD600 corresponding to the voltage measured for the given vial.
+        """
         assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
-        return voltage
+        slope = self.calibration["OD"][f"vial {vial}"]["slope"]["value"]
+        intercept = self.calibration["OD"][f"vial {vial}"]["intercept"]["value"]
+        OD = (voltage - intercept) / slope
+
+        return OD
 
     def _voltage_to_weight(self, vial: int, voltage: float) -> float:
-        "For now this is useless, just returns the raw voltage"
+        """Uses the calibration to convert the voltage measure to an weight in grams.
+
+        Args:
+            vial: vial number.
+            voltage: voltage measured in Volts.
+
+        Returns:
+            weight: weight in grams corresponding to the voltage measured for the given vial.
+        """
         assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
-        return voltage
+        slope = self.calibration["WS"][f"vial {vial}"]["slope"]["value"]
+        intercept = self.calibration["WS"][f"vial {vial}"]["intercept"]["value"]
+        weight = (voltage - intercept) / slope
+
+        return weight
 
     def _run_pump(self, pump: int, dt: float) -> None:
         """Run the pump for a given amount of time. Used for all pumps except waste pump.
 
         Args:
-            pump: pump number
-            dt: duration
+            pump: pump number.
+            dt: duration in seconds.
         """
 
         self.iobus.write_pin(self._pump_to_pin(pump), 1)
