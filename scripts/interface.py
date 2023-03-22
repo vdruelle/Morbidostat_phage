@@ -84,8 +84,9 @@ class Interface:
 
     # --- High level functions ---
 
-    def measure_OD(self, vial: int, lag: float = 0.01, nb_measures: int = 1) -> float:
-        """Measures the mean OD over nb_measures for the given vial.
+    def measure_OD(self, vial: int, lag: float = 0.01, nb_measures: int = 10) -> float:
+        """Measures the mean OD over nb_measures for the given vial. The lights need to be turned on for
+        that to work.
 
         Args:
             vial: vial number.
@@ -96,7 +97,7 @@ class Interface:
             Mean of the measured ODs.
         """
 
-        IOPi, pin = self._WS_to_pin(vial)
+        IOPi, pin = self._OD_to_pin(vial)
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
@@ -166,7 +167,7 @@ class Interface:
         """
         for pump in range(1, len(self.pumps) + 1):
             IOPi, pin = self._pump_to_pin(pump)
-            self.iobuses[IOPi - 1].write_pin(pin, 1)
+            self.iobuses[IOPi - 1].write_pin(pin, 0)
         self.switch_light(False)
         self.iobuses[self.waste_pump["IOPi"] - 1].write_pin(self.waste_pump["pin"], 0)
 
