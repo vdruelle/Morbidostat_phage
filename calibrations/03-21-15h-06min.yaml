@@ -1,12 +1,12 @@
 OD:
-  vial 0:
+  vial 1:
     intercept:
       units: V
       value: 0.17293545999901144
     slope:
       units: V.OD^-1
       value: 3.7623199022022025
-  vial 1:
+  vial 2:
     intercept:
       units: V
       value: 0.1654230612362776
@@ -14,14 +14,14 @@ OD:
       units: V.OD^-1
       value: 4.631400567852842
 WS:
-  vial 0:
+  vial 1:
     intercept:
       units: V
       value: -0.3854830783854166
     slope:
       units: V.g^-1
       value: 0.020294588975694444
-  vial 1:
+  vial 2:
     intercept:
       units: V
       value: -0.41687854906250027
@@ -29,11 +29,11 @@ WS:
       units: V.g^-1
       value: 0.013186388541666672
 pumps:
-  pump 0:
+  pump 1:
     rate:
       units: mL.s^-1
       value: 0.091
-  pump 1:
+  pump 2:
     rate:
       units: mL.s^-1
       value: 0.10200000000000001

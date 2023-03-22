@@ -218,19 +218,19 @@ def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, output: str)
 
     cali_OD = {}
     for ii in range(fits_OD.shape[0]):
-        cali_OD[f"vial {ii}"] = {"slope": {"value": float(fits_OD[ii, 0]), "units": "V.OD^-1"},
+        cali_OD[f"vial {ii+1}"] = {"slope": {"value": float(fits_OD[ii, 0]), "units": "V.OD^-1"},
                                  "intercept": {"value": float(fits_OD[ii, 1]), "units": "V"}}
     calibration_dict["OD"] = cali_OD
 
     cali_WS = {}
     for ii in range(fits_WS.shape[0]):
-        cali_WS[f"vial {ii}"] = {"slope": {"value": float(fits_WS[ii, 0]), "units": "V.g^-1"},
+        cali_WS[f"vial {ii+1}"] = {"slope": {"value": float(fits_WS[ii, 0]), "units": "V.g^-1"},
                                  "intercept": {"value": float(fits_WS[ii, 1]), "units": "V"}}
     calibration_dict["WS"] = cali_WS
 
     cali_pumps = {}
     for ii in range(rate_pumps.shape[0]):
-        cali_pumps[f"pump {ii}"] = {"rate": {"value": float(rate_pumps[ii]), "units": "mL.s^-1"}}
+        cali_pumps[f"pump {ii+1}"] = {"rate": {"value": float(rate_pumps[ii]), "units": "mL.s^-1"}}
     calibration_dict["pumps"] = cali_pumps
 
     with open(CALI_PATH + output + ".yaml", "w") as f:
