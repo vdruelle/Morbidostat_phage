@@ -41,8 +41,7 @@ class Interface:
     # --- Hardware setup ---
 
     def set_hardware_connections(self) -> None:
-        """This function defines the physical connection from the different components to the pin of the RPi.
-        """
+        """This function defines the physical connection from the different components to the pin of the RPi."""
 
         self.adcs = [ADCPi(0x68, 0x69, 18)]
         for adc in self.adcs:
@@ -66,13 +65,14 @@ class Interface:
 
     def load_calibration(self, file) -> None:
         """Load the calibration file, process it and saves it in the Interface class.
+        This needs to be performed with the same hardware connections as will be used for the run.
 
         Args:
             file: calibration file name including extension (ex: '03-21-15h-06min.yaml').
         """
 
         # Opening file as a dictionary
-        with open("calibrations/" + file, 'r') as stream:
+        with open("calibrations/" + file, "r") as stream:
             self.calibration = yaml.load(stream, Loader=yaml.loader.BaseLoader)
 
         # Converting values from string to floats
@@ -80,7 +80,8 @@ class Interface:
             for key2 in self.calibration[key1].keys():
                 for key3 in self.calibration[key1][key2].keys():
                     self.calibration[key1][key2][key3]["value"] = float(
-                        self.calibration[key1][key2][key3]["value"])
+                        self.calibration[key1][key2][key3]["value"]
+                    )
 
     # --- High level functions ---
 
@@ -163,8 +164,7 @@ class Interface:
         self.iobuses[self.lights["IOPi"] - 1].write_pin(self.lights["pin"], state)
 
     def turn_off(self) -> None:
-        """Turns everything controlled by the interface to off state.
-        """
+        """Turns everything controlled by the interface to off state."""
         for pump in range(1, len(self.pumps) + 1):
             IOPi, pin = self._pump_to_pin(pump)
             self.iobuses[IOPi - 1].write_pin(pin, 0)
@@ -293,8 +293,9 @@ class Interface:
         Returns:
             Voltage as measures by the ADCpi.
         """
-        assert adcpi in list(range(1, len(self.adcs) + 1)
-                             ), f"ADCPi {adcpi} isn't in define ADCs: {list(range(1,len(self.adcs)+1))}"
+        assert adcpi in list(
+            range(1, len(self.adcs) + 1)
+        ), f"ADCPi {adcpi} isn't in define ADCs: {list(range(1,len(self.adcs)+1))}"
         assert adc_pin in list(range(1, 9)), f"ADC pin {adc_pin} isn't in available pins {list(range(1,9))}"
 
         return self.adcs[adcpi - 1].read_voltage(adc_pin)

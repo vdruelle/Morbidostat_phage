@@ -11,13 +11,14 @@ CALI_PATH = "calibrations/"
 
 
 def calibrate_OD(
-        interface: Interface,
-        filename: str,
-        nb_standards: int,
-        vials: list = list(range(1, 16)),
-        nb_measures: int = 10,
-        lag: float = 0.1,
-        voltage_threshold: float = 4.8) -> None:
+    interface: Interface,
+    filename: str,
+    nb_standards: int,
+    vials: list = list(range(1, 16)),
+    nb_measures: int = 10,
+    lag: float = 0.1,
+    voltage_threshold: float = 4.8,
+) -> None:
     """Function to perform the calibration of the OD measurment. It is done by measuring some standard with
     known OD in each of the vial slots. It is suggested to use 4 standards that span the whole range of
     measurable OD.
@@ -76,23 +77,24 @@ def calibrate_OD(
 
     # make figure showing calibration
     plt.figure()
-    plt.plot(ODs, voltages, '.-')
-    plt.xlabel('OD standard [a.u.]')
-    plt.ylabel('Voltage [V]')
+    plt.plot(ODs, voltages, ".-")
+    plt.xlabel("OD standard [a.u.]")
+    plt.ylabel("Voltage [V]")
     plt.show()
 
 
 def calibrate_weight_sensors(
-        interface: Interface,
-        filename: str,
-        pump_times: int = [20, 40, 60],
-        pump: int = 1,
-        pumping_rate: float = 9e-2,
-        vials: list = list(range(1, 16)),
-        empty_vial_weight: float = 42,
-        nb_measures: int = 10,
-        lag: float = 0.1,
-        voltage_threshold: float = 4.8) -> None:
+    interface: Interface,
+    filename: str,
+    pump_times: int = [20, 40, 60],
+    pump: int = 1,
+    pumping_rate: float = 9e-2,
+    vials: list = list(range(1, 16)),
+    empty_vial_weight: float = 42,
+    nb_measures: int = 10,
+    lag: float = 0.1,
+    voltage_threshold: float = 4.8,
+) -> None:
     """Function to perform the calibration of the weight sensors. This has to be done after the calibration
     of the pumps as it uses the pumps to input a certain amount of liquid, and then calibrate readings
     depending on the increase in wieght.
@@ -147,7 +149,8 @@ def calibrate_weight_sensors(
         good_measurements = voltages[:, ii] < voltage_threshold
         if good_measurements.sum() > 1:
             slope, intercept, _, _, _ = linregress(
-                weights[good_measurements], voltages[good_measurements, ii])
+                weights[good_measurements], voltages[good_measurements, ii]
+            )
         else:
             print("Less than 2 good measurements, also using saturated measurements for vial" + str(vial))
             slope, intercept, _, _, _ = linregress(weights, voltages[:, ii])
@@ -159,9 +162,9 @@ def calibrate_weight_sensors(
 
     # make figure showing calibration
     plt.figure()
-    plt.plot(weights, voltages, '.-')
-    plt.xlabel('OD standard [a.u.]')
-    plt.ylabel('Voltage [V]')
+    plt.plot(weights, voltages, ".-")
+    plt.xlabel("OD standard [a.u.]")
+    plt.ylabel("Voltage [V]")
     plt.show()
 
 
@@ -218,14 +221,18 @@ def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, output: str)
 
     cali_OD = {}
     for ii in range(fits_OD.shape[0]):
-        cali_OD[f"vial {ii+1}"] = {"slope": {"value": float(fits_OD[ii, 0]), "units": "V.OD^-1"},
-                                 "intercept": {"value": float(fits_OD[ii, 1]), "units": "V"}}
+        cali_OD[f"vial {ii+1}"] = {
+            "slope": {"value": float(fits_OD[ii, 0]), "units": "V.OD^-1"},
+            "intercept": {"value": float(fits_OD[ii, 1]), "units": "V"},
+        }
     calibration_dict["OD"] = cali_OD
 
     cali_WS = {}
     for ii in range(fits_WS.shape[0]):
-        cali_WS[f"vial {ii+1}"] = {"slope": {"value": float(fits_WS[ii, 0]), "units": "V.g^-1"},
-                                 "intercept": {"value": float(fits_WS[ii, 1]), "units": "V"}}
+        cali_WS[f"vial {ii+1}"] = {
+            "slope": {"value": float(fits_WS[ii, 0]), "units": "V.g^-1"},
+            "intercept": {"value": float(fits_WS[ii, 1]), "units": "V"},
+        }
     calibration_dict["WS"] = cali_WS
 
     cali_pumps = {}
@@ -235,7 +242,7 @@ def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, output: str)
 
     with open(CALI_PATH + output + ".yaml", "w") as f:
         yaml.dump(calibration_dict, f)
-    
+
     print(f"Calibration saved in {output}.yaml")
 
 
