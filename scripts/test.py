@@ -3,7 +3,7 @@ import asyncio
 
 async def say_hello(text):
     print(text)
-    await asyncio.sleep(1)
+    await asyncio.sleep(2)
 
 async def main():
     tasks = []
