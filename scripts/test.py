@@ -2,8 +2,8 @@
 import asyncio
 
 async def say_hello(text):
-    await asyncio.sleep(10)
     print(text)
+    await asyncio.sleep(10)
 
 async def main():
     tasks = []
