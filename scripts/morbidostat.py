@@ -1,6 +1,7 @@
 # Main class used for the morbidostat experiments
 
 import time
+
 import numpy as np
 from interface import Interface
 
@@ -13,8 +14,8 @@ class Morbidostat:
 
         # These need to be the same as the interface class
         self.cultures = [1]  # Bacterial culture vials
-        self.phage_vials = [2] # Experiment vials (with phages)
-        self.vial_volume = 18 # In milliliters
+        self.phage_vials = [2]  # Experiment vials (with phages)
+        self.vial_volume = 18  # In milliliters
 
         self.experiment_start = time.time()
 
@@ -28,9 +29,8 @@ class Morbidostat:
         ODs = []
         for vial in self.cultures + self.phage_vials:
             ODs += [self.interface.measure_OD(vial)]
-        
-        np.stack(self.ODs, ODs, axis=1)
 
+        np.stack(self.ODs, ODs, axis=1)
 
     def maintain_cultures(self, target_OD=0.5) -> None:
         pass
@@ -41,8 +41,6 @@ class Morbidostat:
             dilution_ratio = current_OD / target_OD
             # TODO, need to take care of the waste pump for that.
 
-
-
     def inject_bacteria(self, vial, volume) -> None:
         pass
 
@@ -52,5 +50,5 @@ class Morbidostat:
     def cycle(self) -> None:
         pass
 
-    def run(self) -> None,
-    pass
+    def run(self) -> None:
+        pass
