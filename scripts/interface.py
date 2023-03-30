@@ -2,10 +2,17 @@
 # to run the morbidostat. Eventually the low level functions will have to be taken care of with the `asyncio`
 # library.
 
-import numpy as np
+MOCK = True
+
 import time
+
+import numpy as np
 import yaml
-from hardware_libraries import ADCPi, IOPi
+
+if MOCK is False:
+    from hardware_libraries import ADCPi, IOPi
+else:
+    from hardware_mock import ADCPi, IOPi
 
 
 class Interface:
@@ -85,7 +92,9 @@ class Interface:
 
     # --- High level functions ---
 
-    def measure_OD(self, vial: int, lag: float = 0.01, nb_measures: int = 10) -> float:
+    def measure_OD(
+        self, vial: int, lag: float = 0.01, nb_measures: int = 10
+    ) -> float:
         """Measures the mean OD over nb_measures for the given vial. The lights need to be turned on for
         that to work.
 
@@ -102,7 +111,9 @@ class Interface:
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))]
+            values += [
+                self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))
+            ]
         return np.mean(values)
 
     def inject_volume(self, pump: int, volume: float) -> None:
@@ -115,7 +126,9 @@ class Interface:
         dt = self._volume_to_time(pump, volume)
         self._run_pump(pump, dt)
 
-    def measure_weight(self, vial: int, lag: float = 0.01, nb_measures: int = 1) -> None:
+    def measure_weight(
+        self, vial: int, lag: float = 0.01, nb_measures: int = 1
+    ) -> None:
         """Measures the mean weight (in grams) over nb_measures from given vial.
 
         Args:
@@ -131,7 +144,9 @@ class Interface:
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [self._voltage_to_weight(vial, self._measure_voltage(IOPi, pin))]
+            values += [
+                self._voltage_to_weight(vial, self._measure_voltage(IOPi, pin))
+            ]
         return np.mean(values)
 
     def remove_waste(self, volume: float) -> None:
@@ -161,7 +176,9 @@ class Interface:
         """
         assert state in [True, False], f"State {state} is not valid"
 
-        self.iobuses[self.lights["IOPi"] - 1].write_pin(self.lights["pin"], state)
+        self.iobuses[self.lights["IOPi"] - 1].write_pin(
+            self.lights["pin"], state
+        )
 
     def turn_off(self) -> None:
         """Turns everything controlled by the interface to off state."""
@@ -169,7 +186,9 @@ class Interface:
             IOPi, pin = self._pump_to_pin(pump)
             self.iobuses[IOPi - 1].write_pin(pin, 0)
         self.switch_light(False)
-        self.iobuses[self.waste_pump["IOPi"] - 1].write_pin(self.waste_pump["pin"], 0)
+        self.iobuses[self.waste_pump["IOPi"] - 1].write_pin(
+            self.waste_pump["pin"], 0
+        )
 
     # --- Medium level functions ---
 
@@ -184,7 +203,9 @@ class Interface:
             t: time (in seconds) to pump the given volume.
         """
         available_pumps = list(range(1, len(self.pumps) + 1))
-        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
+        assert (
+            pump in available_pumps
+        ), f"Pump {pump} is not in the available pumps {available_pumps}"
 
         t = volume / self.calibration["pumps"][f"pump {pump}"]["rate"]["value"]
         return t
@@ -199,7 +220,9 @@ class Interface:
         Returns:
             OD: OD600 corresponding to the voltage measured for the given vial.
         """
-        assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
+        assert (
+            vial in self.vials
+        ), f"Vial {vial} is not in the available vials: {self.vials}"
 
         slope = self.calibration["OD"][f"vial {vial}"]["slope"]["value"]
         intercept = self.calibration["OD"][f"vial {vial}"]["intercept"]["value"]
@@ -217,7 +240,9 @@ class Interface:
         Returns:
             weight: weight in grams corresponding to the voltage measured for the given vial.
         """
-        assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
+        assert (
+            vial in self.vials
+        ), f"Vial {vial} is not in the available vials: {self.vials}"
 
         slope = self.calibration["WS"][f"vial {vial}"]["slope"]["value"]
         intercept = self.calibration["WS"][f"vial {vial}"]["intercept"]["value"]
@@ -251,7 +276,9 @@ class Interface:
             pin: physical pin on the IOPi
         """
         available_pumps = list(range(1, len(self.pumps) + 1))
-        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
+        assert (
+            pump in available_pumps
+        ), f"Pump {pump} is not in the available pumps {available_pumps}"
 
         return self.pumps[pump - 1]["IOPi"], self.pumps[pump - 1]["pin"]
 
@@ -265,9 +292,14 @@ class Interface:
             ADCPi: ADCPi number (first ADCPi means self.adcs[0])
             pin: physical pin on the ADCPi
         """
-        assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
+        assert (
+            vial_number in self.vials
+        ), f"Vial, {vial_number} is not in the available vials: {self.vials}"
 
-        return self.weight_sensors[vial_number - 1]["ADCPi"], self.weight_sensors[vial_number - 1]["pin"]
+        return (
+            self.weight_sensors[vial_number - 1]["ADCPi"],
+            self.weight_sensors[vial_number - 1]["pin"],
+        )
 
     def _OD_to_pin(self, vial_number: int) -> int:
         """Returns the ADCPi and pin number of the OD associated to the vial.
@@ -279,9 +311,14 @@ class Interface:
             ADCPi: ADCPi number (first ADCPi means self.adcs[0])
             pin: physical pin on the ADCPi
         """
-        assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
+        assert (
+            vial_number in self.vials
+        ), f"Vial, {vial_number} is not in the available vials: {self.vials}"
 
-        return self.ODs[vial_number - 1]["ADCPi"], self.ODs[vial_number - 1]["pin"]
+        return (
+            self.ODs[vial_number - 1]["ADCPi"],
+            self.ODs[vial_number - 1]["pin"],
+        )
 
     def _measure_voltage(self, adcpi: int, adc_pin: int) -> float:
         """Measures voltage from the given pin.
@@ -296,7 +333,9 @@ class Interface:
         assert adcpi in list(
             range(1, len(self.adcs) + 1)
         ), f"ADCPi {adcpi} isn't in define ADCs: {list(range(1,len(self.adcs)+1))}"
-        assert adc_pin in list(range(1, 9)), f"ADC pin {adc_pin} isn't in available pins {list(range(1,9))}"
+        assert adc_pin in list(
+            range(1, 9)
+        ), f"ADC pin {adc_pin} isn't in available pins {list(range(1,9))}"
 
         return self.adcs[adcpi - 1].read_voltage(adc_pin)
 
