@@ -5,7 +5,6 @@ import asyncio
 class Interface:
     def __init__(self) -> None:
         self.tasks = []
-        self.loop = asyncio.get_event_loop()
 
     def add_pumping(self, pump, dt):
         async def _pump_coroutine(pump, dt):
@@ -16,7 +15,9 @@ class Interface:
         self.tasks.append(asyncio.ensure_future(_pump_coroutine(pump, dt)))
 
     def launch_pump(self):
-        self.loop.run_until_complete(asyncio.gather(*self.tasks))
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.gather(*self.tasks))
+        self.tasks = []
 
 
 if __name__ == "__main__":
