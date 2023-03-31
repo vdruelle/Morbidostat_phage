@@ -97,9 +97,7 @@ class Interface:
 
     # --- High level functions ---
 
-    def measure_OD(
-        self, vial: int, lag: float = 0.01, nb_measures: int = 10
-    ) -> float:
+    def measure_OD(self, vial: int, lag: float = 0.01, nb_measures: int = 10) -> float:
         """Measures the mean OD over nb_measures for the given vial. The lights need to be turned on for
         that to work.
 
@@ -116,24 +114,23 @@ class Interface:
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [
-                self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))
-            ]
+            values += [self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))]
         return np.mean(values)
 
-    def inject_volume(self, pump: int, volume: float) -> None:
+    def inject_volume(self, pump: int, volume: float, run=True) -> None:
         """Run the pump to inject a given volume in mL.
 
         Args:
             pump: pump number
             volume: volume (in mL)
         """
+        # TODO: Need to discuss how to do better for long term use
         dt = self._volume_to_time(pump, volume)
-        self._run_pump(pump, dt)
+        self._add_pumping(pump, dt)
+        if run == True:
+            self._run_pumps()
 
-    def measure_weight(
-        self, vial: int, lag: float = 0.01, nb_measures: int = 1
-    ) -> None:
+    def measure_weight(self, vial: int, lag: float = 0.01, nb_measures: int = 1) -> None:
         """Measures the mean weight (in grams) over nb_measures from given vial.
 
         Args:
@@ -149,9 +146,7 @@ class Interface:
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [
-                self._voltage_to_weight(vial, self._measure_voltage(IOPi, pin))
-            ]
+            values += [self._voltage_to_weight(vial, self._measure_voltage(IOPi, pin))]
         return np.mean(values)
 
     def remove_waste(self, volume: float) -> None:
@@ -181,9 +176,7 @@ class Interface:
         """
         assert state in [True, False], f"State {state} is not valid"
 
-        self.iobuses[self.lights["IOPi"] - 1].write_pin(
-            self.lights["pin"], state
-        )
+        self.iobuses[self.lights["IOPi"] - 1].write_pin(self.lights["pin"], state)
 
     def turn_off(self) -> None:
         """Turns everything controlled by the interface to off state."""
@@ -191,9 +184,7 @@ class Interface:
             IOPi, pin = self._pump_to_pin(pump)
             self.iobuses[IOPi - 1].write_pin(pin, 0)
         self.switch_light(False)
-        self.iobuses[self.waste_pump["IOPi"] - 1].write_pin(
-            self.waste_pump["pin"], 0
-        )
+        self.iobuses[self.waste_pump["IOPi"] - 1].write_pin(self.waste_pump["pin"], 0)
 
     # --- Medium level functions ---
 
@@ -208,9 +199,7 @@ class Interface:
             t: time (in seconds) to pump the given volume.
         """
         available_pumps = list(range(1, len(self.pumps) + 1))
-        assert (
-            pump in available_pumps
-        ), f"Pump {pump} is not in the available pumps {available_pumps}"
+        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
 
         t = volume / self.calibration["pumps"][f"pump {pump}"]["rate"]["value"]
         return t
@@ -225,9 +214,7 @@ class Interface:
         Returns:
             OD: OD600 corresponding to the voltage measured for the given vial.
         """
-        assert (
-            vial in self.vials
-        ), f"Vial {vial} is not in the available vials: {self.vials}"
+        assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
         slope = self.calibration["OD"][f"vial {vial}"]["slope"]["value"]
         intercept = self.calibration["OD"][f"vial {vial}"]["intercept"]["value"]
@@ -245,33 +232,38 @@ class Interface:
         Returns:
             weight: weight in grams corresponding to the voltage measured for the given vial.
         """
-        assert (
-            vial in self.vials
-        ), f"Vial {vial} is not in the available vials: {self.vials}"
+        assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
         slope = self.calibration["WS"][f"vial {vial}"]["slope"]["value"]
         intercept = self.calibration["WS"][f"vial {vial}"]["intercept"]["value"]
         weight = (voltage - intercept) / slope
 
         return weight
-    
-    async def _run_pump(self, pump: int, dt: float) -> None:
-        """Run the pump for a given amount of time. Used for all pumps except waste pump.
+
+    def _add_pumping(self, pump: int, dt: float) -> None:
+        """Add a pumping task to the async tasks list. Used for all pumps except waste pump.
+        One must call _run_pumps() to execute these tasks.
 
         Args:
             pump: pump number.
             dt: duration in seconds.
         """
 
-        async def async_pumping(self, pump: int, dt: float) -> None:
+        async def _pump_coroutine(self, pump: int, dt: float) -> None:
             IOPi, pin = self._pump_to_pin(pump)
             self.iobuses[IOPi - 1].write_pin(pin, 1)
             print(f"Pump {pump} start pumping.")
             await asyncio.sleep(dt)
             self.iobuses[IOPi - 1].write_pin(pin, 0)
             print(f"Pump {pump} finished after {dt} seconds.")
-        
-        asyncio.create_task(async_pumping(self, pump, dt))
+
+        self.asynctasks.append(asyncio.ensure_future(_pump_coroutine(self, pump, dt)))
+
+    def _run_pumps(self) -> None:
+        """Executes the tasks in the asynchronous tasks list."""
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.gather(*self.asynctasks))
+        self.asynctasks = []
 
     # --- Low level functions ---
 
@@ -286,9 +278,7 @@ class Interface:
             pin: physical pin on the IOPi
         """
         available_pumps = list(range(1, len(self.pumps) + 1))
-        assert (
-            pump in available_pumps
-        ), f"Pump {pump} is not in the available pumps {available_pumps}"
+        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
 
         return self.pumps[pump - 1]["IOPi"], self.pumps[pump - 1]["pin"]
 
@@ -302,9 +292,7 @@ class Interface:
             ADCPi: ADCPi number (first ADCPi means self.adcs[0])
             pin: physical pin on the ADCPi
         """
-        assert (
-            vial_number in self.vials
-        ), f"Vial, {vial_number} is not in the available vials: {self.vials}"
+        assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
 
         return (
             self.weight_sensors[vial_number - 1]["ADCPi"],
@@ -321,9 +309,7 @@ class Interface:
             ADCPi: ADCPi number (first ADCPi means self.adcs[0])
             pin: physical pin on the ADCPi
         """
-        assert (
-            vial_number in self.vials
-        ), f"Vial, {vial_number} is not in the available vials: {self.vials}"
+        assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
 
         return (
             self.ODs[vial_number - 1]["ADCPi"],
@@ -343,25 +329,26 @@ class Interface:
         assert adcpi in list(
             range(1, len(self.adcs) + 1)
         ), f"ADCPi {adcpi} isn't in define ADCs: {list(range(1,len(self.adcs)+1))}"
-        assert adc_pin in list(
-            range(1, 9)
-        ), f"ADC pin {adc_pin} isn't in available pins {list(range(1,9))}"
+        assert adc_pin in list(range(1, 9)), f"ADC pin {adc_pin} isn't in available pins {list(range(1,9))}"
 
         return self.adcs[adcpi - 1].read_voltage(adc_pin)
-    
+
     async def _wait_for_pumping(self):
         pass
 
-    
-async def main():
-    tmp = Interface()
-    await tmp._run_pump(1, 5)
-    await tmp._run_pump(2, 10)
-    tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
-    await asyncio.wait(tasks)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asynchronous = True
 
-    # tmp = Interface()
-    
+    tmp = Interface()
+    print("test")
+
+    if asynchronous:
+        tmp.inject_volume(1, 0.3, run=False)
+        tmp.inject_volume(2, 0.6, run=False)
+        tmp._run_pumps()
+    else:
+        tmp.inject_volume(1, 0.3)
+        tmp.inject_volume(2, 0.6)
+
+    print("test2")
