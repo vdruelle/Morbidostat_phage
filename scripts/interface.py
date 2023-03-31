@@ -40,6 +40,8 @@ class Interface:
         # self.iobuses[0] is the first ADC connected to the RPI
         self.iobuses = []
 
+        self.asynctasks = []
+
         # Setting hardware connections
         self.set_hardware_connections()
 
@@ -252,7 +254,7 @@ class Interface:
         weight = (voltage - intercept) / slope
 
         return weight
-
+    
     async def _run_pump(self, pump: int, dt: float) -> None:
         """Run the pump for a given amount of time. Used for all pumps except waste pump.
 
@@ -261,15 +263,15 @@ class Interface:
             dt: duration in seconds.
         """
 
-        # async def async_pumping(self, pump: int, dt: float) -> None:
-        IOPi, pin = self._pump_to_pin(pump)
-        self.iobuses[IOPi - 1].write_pin(pin, 1)
-        print(f"Pump {pump} start pumping.")
-        await asyncio.sleep(dt)
-        self.iobuses[IOPi - 1].write_pin(pin, 0)
-        print(f"Pump {pump} finished after {dt} seconds.")
+        async def async_pumping(self, pump: int, dt: float) -> None:
+            IOPi, pin = self._pump_to_pin(pump)
+            self.iobuses[IOPi - 1].write_pin(pin, 1)
+            print(f"Pump {pump} start pumping.")
+            await asyncio.sleep(dt)
+            self.iobuses[IOPi - 1].write_pin(pin, 0)
+            print(f"Pump {pump} finished after {dt} seconds.")
         
-        # asyncio.create_task(async_pumping(self, pump, dt))
+        asyncio.create_task(async_pumping(self, pump, dt))
 
     # --- Low level functions ---
 
