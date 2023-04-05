@@ -58,6 +58,7 @@ class Interface:
         self.adcs = [ADCPi(0x68, 0x69, 18)]
         for adc in self.adcs:
             adc.set_pga(1)
+            adc.set_bit_rate(14)
 
         self.iobuses = [IOPi(0x20)]
         for iobus in self.iobuses:
