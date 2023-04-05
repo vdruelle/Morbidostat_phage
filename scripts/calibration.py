@@ -52,11 +52,11 @@ def calibrate_OD(
             ODs.append(float(cur_OD))
             no_valid_standard = False
 
-        for jj, viald_id in enumerate(vials):  # iterating over all vials for the current OD standard
-            input("   Place OD standard in vial slot " + str(viald_id) + ", press enter when done")
+        for jj, vial_id in enumerate(vials):  # iterating over all vials for the current OD standard
+            input("   Place OD standard in vial slot " + str(vial_id) + ", press enter when done")
             # Q: Maybe better to switch light on within measure -> any point in measure without light? Probably no
             interface.switch_light(True)
-            voltages[standard][jj] = interface.measure_OD(viald_id, lag, nb_measures)  # Measuring voltage
+            voltages[standard][jj] = interface.measure_OD(vial_id, lag, nb_measures)  # Measuring voltage
             interface.switch_light(False)
             print(f"   Mean voltage measured: {voltages[standard][jj]}V")
 
@@ -65,12 +65,12 @@ def calibrate_OD(
     fit_parameters = np.zeros((len(vials), 2))  # first columns are slope, second are intercepts
 
     # Computing the fit for all vials
-    for ii, viald_id in enumerate(vials):
+    for ii, vial_id in enumerate(vials):
         good_measurements = voltages[:, ii] < voltage_threshold
         if good_measurements.sum() > 1:
             slope, intercept, _, _, _ = linregress(ODs[good_measurements], voltages[good_measurements, ii])
         else:
-            print("Less than 2 good measurements, also using saturated measurements for vial" + str(viald_id))
+            print("Less than 2 good measurements, also using saturated measurements for vial" + str(vial_id))
             slope, intercept, _, _, _ = linregress(ODs, voltages[:, ii])
         # Probably want to save this info in the output file
         # Also, why not save all measurements for debugging/post-hoc analysis?
@@ -89,6 +89,7 @@ def calibrate_OD(
 
 
 # Q: Would it not be better to specify pump volume and rate rather than time?
+# A: That would also work, having time is better for checking externally (with chronometer) so that's why
 def calibrate_weight_sensors(
     interface: Interface,
     filename: str,
