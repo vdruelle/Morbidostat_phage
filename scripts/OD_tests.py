@@ -6,21 +6,20 @@ from interface import Interface
 from scipy.optimize import curve_fit
 
 
-def read_time(vial: int = 1, bitrate: int = 12) -> None:
+def read_time(interface: Interface, vial: int = 1, bitrate: int = 12) -> None:
     "Test time of a read"
-    interface = Interface()
     adc = interface.adcs[0]
     adc.set_bit_rate(bitrate)
-    IOPi, pin = interface._OD_to_pin(vial)
+    ADCPi, pin = interface._OD_to_pin(vial)
     t1 = time.time()
-    interface._measure_voltage(IOPi, pin)
+    interface._measure_voltage(ADCPi, pin)
     # adc.read_voltage(pin)
     t2 = time.time()
     t = t2 - t1
     print(f"One read: {t2-t1}s")
 
     t1 = time.time()
-    interface._measure_voltage(IOPi, pin)
+    interface._measure_voltage(ADCPi, pin)
     # adc.read_voltage(pin)
     t2 = time.time()
     t = t2 - t1
@@ -28,19 +27,19 @@ def read_time(vial: int = 1, bitrate: int = 12) -> None:
 
     t1 = time.time()
     for ii in range(100):
-        interface._measure_voltage(IOPi, pin)
+        interface._measure_voltage(ADCPi, pin)
         # adc.read_voltage(pin)
     t2 = time.time()
     t = (t2 - t1) / 100
     print(f"Average over 100 reads: {t}s")
 
 
-def light_switching() -> None:
+def light_switching(interface: Interface) -> None:
     "Test if there is a latency between turning the lights on and actually reading something."
     interface = Interface()
     vial = 1
     bitrate = 12
-    IOPi, pin = interface._OD_to_pin(vial)
+    ADCPi, pin = interface._OD_to_pin(vial)
     adc = interface.adcs[0]
     adc.set_bit_rate(bitrate)
     times = np.arange(0, 0.1, 0.0001)
@@ -49,7 +48,7 @@ def light_switching() -> None:
     for ii, t in enumerate(times):
         interface.switch_light(True)
         time.sleep(t)
-        voltages[ii] = interface._measure_voltage(IOPi, pin)
+        voltages[ii] = interface._measure_voltage(ADCPi, pin)
         interface.switch_light(False)
         time.sleep(0.01)
 
@@ -61,20 +60,21 @@ def light_switching() -> None:
     plt.show()
 
 
-def OD_convergence(vial: int = 1, bitrate: int = 12) -> None:
+def OD_convergence(interface: Interface) -> None:
     "Test if OD reading has a ramp up time."
     interface = Interface()
-    IOPi, pin = interface._OD_to_pin(1)
+    ADCPi, pin = interface._OD_to_pin(1)
     adc = interface.adcs[0]
-    adc.set_bit_rate(18)
+    adc.set_bit_rate(14)
+    # adc.set_pga(8)
     dt = 0.5
-    times = np.arange(dt, 300, dt)
+    times = np.arange(dt, 30, dt)
     voltages = np.zeros_like(times)
 
     interface.switch_light(True)
     for ii in range(times.shape[0]):
         time.sleep(dt)
-        voltages[ii] = interface._measure_voltage(IOPi, pin)
+        voltages[ii] = interface._measure_voltage(ADCPi, pin)
 
     interface.switch_light(False)
 
@@ -94,10 +94,10 @@ def OD_convergence(vial: int = 1, bitrate: int = 12) -> None:
     plt.show()
 
 
-def precision() -> None:
+def precision(interface: Interface) -> None:
     interface = Interface()
     adc = interface.adcs[0]
-    IOPi, pin = interface._OD_to_pin(1)
+    ADCPi, pin = interface._OD_to_pin(1)
     adc.set_bit_rate(18)
     dt = 0.001
     times = np.arange(0, 10, dt)
@@ -144,7 +144,11 @@ def precision() -> None:
 
 
 if __name__ == "__main__":
-    # read_time(bitrate=12)
-    # light_switching()
-    # OD_convergence()
-    # precision()
+    try:
+        interface = Interface()
+        # read_time(interface, bitrate=14)
+        # light_switching(interface)
+        OD_convergence(interface)
+        # precision(interface)
+    finally:
+        interface.turn_off()

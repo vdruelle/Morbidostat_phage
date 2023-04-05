@@ -39,7 +39,7 @@ class Interface:
         self.adcs = []
         # self.iobuses[0] is the first ADC connected to the RPI
         self.iobuses = []
-
+        # asyncio tasks waiting for start
         self.asynctasks = []
 
         # Setting hardware connections
@@ -58,7 +58,7 @@ class Interface:
         self.adcs = [ADCPi(0x68, 0x69, 18)]
         for adc in self.adcs:
             adc.set_pga(1)
-            adc.set_bit_rate(14)
+            adc.set_bit_rate(14)  # 14 bits is read at 0.02 seconds, ~0.7mV (0.075) precision with PGA 1 (8)
 
         self.iobuses = [IOPi(0x20)]
         for iobus in self.iobuses:
@@ -98,7 +98,7 @@ class Interface:
 
     # --- High level functions ---
 
-    def measure_OD(self, vial: int, lag: float = 0.01, nb_measures: int = 10) -> float:
+    def measure_OD(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
         """Measures the mean OD over nb_measures for the given vial. The lights need to be turned on for
         that to work.
 
@@ -118,12 +118,13 @@ class Interface:
             values += [self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))]
         return np.mean(values)
 
-    def inject_volume(self, pump: int, volume: float, run=True) -> None:
-        """Run the pump to inject a given volume in mL.
+    def inject_volume(self, pump: int, volume: float, run=False) -> None:
+        """Queue the inject of the pump for the given volume in mL.
 
         Args:
             pump: pump number
             volume: volume (in mL)
+            run: Whether to queue the pumping (asynchronous) or to run it directly (sequential). Defaults to False.
         """
         # TODO: Need to discuss how to do better for long term use
         dt = self._volume_to_time(pump, volume)
@@ -131,13 +132,19 @@ class Interface:
         if run == True:
             self._run_pumps()
 
-    def measure_weight(self, vial: int, lag: float = 0.01, nb_measures: int = 1) -> None:
+    def run_pumps(self) -> None:
+        """Executes all the tasks in the asynchronous tasks list and wait for them to finish."""
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.gather(*self.asynctasks))
+        self.asynctasks = []
+
+    def measure_weight(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> None:
         """Measures the mean weight (in grams) over nb_measures from given vial.
 
         Args:
             vial: vial number.
-            lag: delay between measures (in second). Defaults to 0.01.
-            nb_measures: number of measures. Defaults to 1.
+            lag: delay between measures (in second). Defaults to 0.02.
+            nb_measures: number of measures. Defaults to 10.
 
         Returns:
             Mean of the measured weights.
@@ -241,9 +248,9 @@ class Interface:
 
         return weight
 
-    def _add_pumping(self, pump: int, dt: float) -> None:
+    def _add_pumping(self, pump: int, dt: float, verbose: bool = False) -> None:
         """Add a pumping task to the async tasks list. Used for all pumps except waste pump.
-        One must call _run_pumps() to execute these tasks.
+        One must call run_pumps() to execute these tasks.
 
         Args:
             pump: pump number.
@@ -253,18 +260,14 @@ class Interface:
         async def _pump_coroutine(self, pump: int, dt: float) -> None:
             IOPi, pin = self._pump_to_pin(pump)
             self.iobuses[IOPi - 1].write_pin(pin, 1)
-            print(f"Pump {pump} start pumping.")
+            if verbose:
+                print(f"Pump {pump} start pumping.")
             await asyncio.sleep(dt)
             self.iobuses[IOPi - 1].write_pin(pin, 0)
-            print(f"Pump {pump} finished after {dt} seconds.")
+            if verbose:
+                print(f"Pump {pump} finished after {dt} seconds.")
 
         self.asynctasks.append(asyncio.ensure_future(_pump_coroutine(self, pump, dt)))
-
-    def _run_pumps(self) -> None:
-        """Executes the tasks in the asynchronous tasks list."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(asyncio.gather(*self.asynctasks))
-        self.asynctasks = []
 
     # --- Low level functions ---
 
@@ -334,22 +337,23 @@ class Interface:
 
         return self.adcs[adcpi - 1].read_voltage(adc_pin)
 
-    async def _wait_for_pumping(self):
-        pass
-
 
 if __name__ == "__main__":
-    asynchronous = True
+    try:
+        asynchronous = True
 
-    tmp = Interface()
-    print("test")
+        tmp = Interface()
+        print("test")
 
-    if asynchronous:
-        tmp.inject_volume(1, 0.3, run=False)
-        tmp.inject_volume(2, 0.6, run=False)
-        tmp._run_pumps()
-    else:
-        tmp.inject_volume(1, 0.3)
-        tmp.inject_volume(2, 0.6)
+        if asynchronous:
+            tmp.inject_volume(1, 0.3)
+            tmp.inject_volume(2, 0.6)
+            tmp.run_pumps()
+        else:
+            tmp.inject_volume(1, 0.3, run=True)
+            tmp.inject_volume(2, 0.6, run=True)
 
-    print("test2")
+        print("test2")
+
+    finally:
+        tmp.turn_off()

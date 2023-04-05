@@ -17,8 +17,8 @@ def calibrate_OD(
     filename: str,
     nb_standards: int,
     vials: list = list(range(1, 16)),
-    nb_measures: int = 10,
-    lag: float = 0.1,
+    nb_measures: int = 1,
+    lag: float = 0.02,
     voltage_threshold: float = 4.8,
 ) -> None:
     """Function to perform the calibration of the OD measurment. It is done by measuring some standard with
@@ -32,8 +32,8 @@ def calibrate_OD(
         filename: name of the save file.
         nb_standards: number of OD standard to calibrate on.
         vials: list of 1-indexed vials to calibrate. Defaults to list(range(1, 16)). # Q: Does order matter? If not -> use set
-        nb_measure: number of voltage measures to average for each data point. Defaults to 10.
-        lag: time between voltage measures in seconds. Defaults to 0.1.
+        nb_measure: number of voltage measures to average for each data point. Defaults to 1.
+        lag: time between voltage measures in seconds. Defaults to 0.02.
         voltage_threshold: Used to estimate if there is overflow and exclude data point [V]. Defaults to 4.8.
     """
     assert nb_standards >= 2, "At least 2 OD standards are needed for the calibration."
@@ -53,10 +53,12 @@ def calibrate_OD(
             no_valid_standard = False
 
         for jj, vial_id in enumerate(vials):  # iterating over all vials for the current OD standard
+            time.sleep(5)  # Because of time dependance of measured voltage
             input("   Place OD standard in vial slot " + str(vial_id) + ", press enter when done")
-            # Q: Maybe better to switch light on within measure -> any point in measure without light? Probably no
             interface.switch_light(True)
-            voltages[standard][jj] = interface.measure_OD(vial_id, lag, nb_measures)  # Measuring voltage
+            time.sleep(10)  # Because of time dependance of measured voltage
+            ADCPi, pin = interface._OD_to_pin(vial_id)
+            voltages[standard][jj] = interface._measure_voltage(ADCPi, pin)
             interface.switch_light(False)
             print(f"   Mean voltage measured: {voltages[standard][jj]}V")
 
@@ -88,8 +90,52 @@ def calibrate_OD(
     plt.show()
 
 
+def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float = 30):
+    """Function to perform the calibration of the pumps. For now it is done by connecting all the pumps and
+    putting their inlet in water and their outlet on the scale. Then each pump is run for dt seconds and the
+    user is asked for the new weight. Pumping rates are inferred from the difference in weights.
+    Saves the pumping rate in a file with the given filename.
+
+    Args:
+        interface: Interface object from interface.py file.
+        filename: name of the save file.
+        pumps: list of the pumps to calibrate.
+        dt: Pumping time for the calibration in seconds. Defaults to 10.
+    """
+    weights = np.zeros((2, len(pumps)))  # Pumps are columns, first line is weight before and second is after
+
+    print(f"\nStarting pump calibration for pumps {pumps}.")
+    print("Put inlet of all pumps in water. Put outlet of pumps in vial on a balance")
+
+    input("When the setup is ready press enter. It will run all the pumps for 20s to fill the tubing.")
+    for pump_id in pumps:
+        print(f"Running pump {pump_id}")
+        interface._add_pumping(pump_id, 20)
+    interface.run_pumps()
+
+    # All vials weigh the same? -> not exactly
+    # Improvement: run all pumps in parallel -> no, there is only one scale
+    weight = input("Current weight of vial: ")
+    for pump_idx, pump_id in enumerate(pumps):  # iterate over all pumps and asks for weights
+        print(f"Calibrating pump {pump_id}")
+        weights[0, pump_idx] = weight
+        interface._add_pumping(pump_id, dt)
+        interface.run_pumps()
+        weight = input("    Measured weight of vial: ")
+        weights[1, pump_idx] = weight
+
+    print()
+    print("Calibration manipulation complete. Computing pumping rate.")
+
+    # calculate pump_rate and save to file
+    pump_rates = (weights[1, :] - weights[0, :]) / dt  # g.s^-1 <=> mL*s^-1
+
+    print(f"Saving data in {filename}.")
+    np.savetxt(CALI_PATH + filename, pump_rates)
+
+
 # Q: Would it not be better to specify pump volume and rate rather than time?
-# A: That would also work, having time is better for checking externally (with chronometer) so that's why
+# A: That would also work, having time is better for checking externally (with chronometer)
 def calibrate_weight_sensors(
     interface: Interface,
     filename: str,
@@ -124,7 +170,8 @@ def calibrate_weight_sensors(
     input(f"Put the inlet and outlet of pump {pump} in water to pre-fill the tubes, then press enter.")
 
     print(f"Running pump {pump} for 15 seconds.")
-    interface._run_pump(pump, 15)
+    interface._add_pumping(pump, 15)
+    interface.run_pumps()
     print(f"Pre-filling done.")
 
     voltages = np.zeros((len(pump_times) + 1, len(vials)))
@@ -133,15 +180,18 @@ def calibrate_weight_sensors(
         print()
         input(f"Put outlet of pump {pump} in the vial {vial_id}, then press enter.")
         tot_time = 0
-        voltages[0, vial_idx] = interface.measure_weight(vial_id)  # empty vial
+        ADCPi, pin = interface._WS_to_pin(vial_id)
+        voltages[0, vial_idx] = interface._measure_voltage(ADCPi, pin)  # empty vial
         print(f"    Empty vial voltage: {voltages[0,vial_idx]}")
 
-        # Why not pump and measure more often? E.g. 2s on, 1s off etc?
+        # Why not pump and measure more often? E.g. 2s on, 1s off etc? -> measuring requires human intervention
         for pump_time_idx, t in enumerate(pump_times):
             dt = t - tot_time
-            interface._run_pump(pump, dt)
+            interface._add_pumping(pump, dt)
+            interface.run_pumps()
             time.sleep(1)
-            voltages[pump_time_idx + 1, vial_idx] = interface.measure_weight(vial_id)  # after pumping
+            ADCPi, pin = interface._WS_to_pin(vial_id)
+            voltages[pump_time_idx + 1, vial_idx] = interface._measure_voltage(ADCPi, pin)
             tot_time = t
             print(f"    Measuring voltage after {tot_time}s: {voltages[pump_time_idx+1, vial_idx]}")
 
@@ -174,48 +224,6 @@ def calibrate_weight_sensors(
     plt.xlabel("OD standard [a.u.]")
     plt.ylabel("Voltage [V]")
     plt.show()
-
-
-def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float = 30):
-    """Function to perform the calibration of the pumps. For now it is done by connecting all the pumps and
-    putting their inlet in water and their outlet on the scale. Then each pump is run for dt seconds and the
-    user is asked for the new weight. Pumping rates are inferred from the difference in weights.
-    Saves the pumping rate in a file with the given filename.
-
-    Args:
-        interface: Interface object from interface.py file.
-        filename: name of the save file.
-        pumps: list of the pumps to calibrate.
-        dt: Pumping time for the calibration in seconds. Defaults to 10.
-    """
-    weights = np.zeros((2, len(pumps)))  # Pumps are columns, first line is weight before and second is after
-
-    print(f"\nStarting pump calibration for pumps {pumps}.")
-    print("Put inlet of all pumps in water. Put outlet of pumps in vial on a balance")
-
-    input("When the setup is ready press enter. It will run all the pumps for 20s to fill the tubing.")
-    for pump_id in pumps:
-        print(f"Running pump {pump_id}")
-        interface._run_pump(pump_id, 20)
-
-    # All vials weigh the same?
-    # Improvement: run all pumps in parallel
-    weight = input("Initial weight of vial: ")
-    for pump_idx, pump_id in enumerate(pumps):  # iterate over all pumps and asks for weights
-        print(f"Calibrating pump {pump_id}")
-        weights[0, pump_idx] = weight
-        interface._run_pump(pump_id, dt)
-        weight = input("    Measured weight of vial: ")
-        weights[1, pump_idx] = weight
-
-    print()
-    print("Calibration manipulation complete. Computing pumping rate.")
-
-    # calculate pump_rate and save to file
-    pump_rates = (weights[1, :] - weights[0, :]) / dt  # g.s^-1 <=> mL*s^-1
-
-    print(f"Saving data in {filename}.")
-    np.savetxt(CALI_PATH + filename, pump_rates)
 
 
 def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, output: str):
