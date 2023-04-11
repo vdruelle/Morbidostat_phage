@@ -37,3 +37,7 @@ pumps:
     rate:
       units: mL.s^-1
       value: 0.10200000000000001
+  pump 3:
+    rate:
+      units: mL.s^-1
+      value: 0.10200000000000001

@@ -197,7 +197,7 @@ def calibrate_weight_sensors(
             tot_time = t
             print(f"    Measuring voltage after {tot_time}s: {voltages[pump_time_idx+1, vial_idx]}")
 
-        print(f"Calibration of weight sensor {vial_id} done.")
+        print(f"Calibration of weight sensor {vial_id} done².")
 
     # Computing the fit for all vials
     weights = np.array([0] + pump_times) * pumping_rate + empty_vial_weight  # these are in grams
@@ -274,9 +274,9 @@ if __name__ == "__main__":
         interface = Interface()
         choice = input("What would you like to calibrate ? [OD, pumps, WS, concatenate]: ")
         if choice == "OD":
-            calibrate_OD(interface, "OD.txt", nb_standards=2, vials=[1, 2])
+            calibrate_OD(interface, "OD.txt", nb_standards=5, vials=[1, 2])
         elif choice == "pumps":
-            calibrate_pumps(interface, "pumps.txt", [1, 2])
+            calibrate_pumps(interface, "pumps.txt", [1, 2, 3])
         elif choice == "WS":
             calibrate_weight_sensors(interface, "WS.txt", vials=[1, 2])
         elif choice == "concatenate":

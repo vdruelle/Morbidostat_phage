@@ -22,7 +22,7 @@ class Morbidostat:
         self.experiment_start = time.time()
 
         self.ODs = np.zeros(len(self.cultures) + len(self.phage_vials))
-        self.ODtimes = []
+        self.ODtimes = [0]
 
     def set_pumps(self):
         def create_pump(number, input_type: str, input_number: int, output_type: str, output_number: int):
@@ -60,8 +60,8 @@ class Morbidostat:
         for vial in self.cultures + self.phage_vials:
             ODs += [self.interface.measure_OD(vial)]
 
-        np.stack(self.ODs, ODs, axis=1)
-        self.ODtimes += self.experiment_time()
+        self.ODs = np.vstack([self.ODs, ODs])
+        self.ODtimes.append(self.experiment_time())
 
     def maintain_cultures(self, target_OD: float = 0.5, verbose: bool = False) -> None:
         """Maintain all cultures at the target OD.
@@ -74,6 +74,13 @@ class Morbidostat:
         self.interface.run_pumps()
 
     def maintain_culture(self, culture, target_OD: float = 0.5, verbose: bool = False) -> None:
+        """Perform dilution of the culture to reach target OD (if above target) or does nothing (if below).
+
+        Args:
+            culture: culture number (1 is the first culture)
+            target_OD: od to reach. Defaults to 0.5.
+            verbose: prints information regarding the function. Defaults to False.
+        """
         current_OD = self.interface.measure_OD(culture)
         if current_OD > target_OD:
             dilution_ratio = current_OD / target_OD
@@ -102,7 +109,8 @@ class Morbidostat:
         pass
 
     def cycle(self) -> None:
-        pass
+        self.maintain_cultures(0.3)
+        # TODO
 
     def run(self) -> None:
         pass
@@ -111,3 +119,5 @@ class Morbidostat:
 if __name__ == "__main__":
     morb = Morbidostat()
     morb.interface.switch_light(True)
+
+    morb.interface.switch_light(False)
