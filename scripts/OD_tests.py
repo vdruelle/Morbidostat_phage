@@ -65,10 +65,10 @@ def OD_convergence(interface: Interface) -> None:
     interface = Interface()
     ADCPi, pin = interface._OD_to_pin(1)
     adc = interface.adcs[0]
-    adc.set_bit_rate(14)
+    adc.set_bit_rate(18)
     # adc.set_pga(8)
     dt = 0.5
-    times = np.arange(dt, 30, dt)
+    times = np.arange(dt, 300, dt)
     voltages = np.zeros_like(times)
 
     interface.switch_light(True)

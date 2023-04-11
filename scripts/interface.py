@@ -5,7 +5,7 @@
 import asyncio
 import time
 
-MOCK = True
+MOCK = False
 
 import time
 
@@ -58,14 +58,14 @@ class Interface:
         self.adcs = [ADCPi(0x68, 0x69, 18)]
         for adc in self.adcs:
             adc.set_pga(1)
-            adc.set_bit_rate(14)  # 14 bits is read at 0.02 seconds, ~0.7mV (0.075) precision with PGA 1 (8)
+            adc.set_bit_rate(14)  # 14 bits is read at 0.02 seconds, ~0.07mV precision with PGA 1 (8)
 
         self.iobuses = [IOPi(0x20)]
         for iobus in self.iobuses:
             for ii in range(1, 17):
                 iobus.set_pin_direction(ii, 0)
 
-        self.vials = list(range(1, 3))
+        self.vials = [1, 2]
         self.lights = {"IOPi": 1, "pin": 1}
         self.waste_pump = {"IOPi": 1, "pin": 2}
 
@@ -130,7 +130,7 @@ class Interface:
         dt = self._volume_to_time(pump, volume)
         self._add_pumping(pump, dt)
         if run == True:
-            self._run_pumps()
+            self.run_pumps()
 
     def run_pumps(self) -> None:
         """Executes all the tasks in the asynchronous tasks list and wait for them to finish."""

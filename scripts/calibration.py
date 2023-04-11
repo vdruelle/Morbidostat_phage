@@ -43,6 +43,10 @@ def calibrate_OD(
     voltages = np.zeros((nb_standards, len(vials)))
     print()
 
+    print("Preheating LEDs for measurments, please wait 2 minutes.")
+    interface.switch_light(True)
+    time.sleep(120)
+
     # Measuring the voltage for all vial + OD standard combo
     for standard in range(nb_standards):  # iterating over all standards
         no_valid_standard = True
@@ -53,14 +57,12 @@ def calibrate_OD(
             no_valid_standard = False
 
         for jj, vial_id in enumerate(vials):  # iterating over all vials for the current OD standard
-            time.sleep(5)  # Because of time dependance of measured voltage
             input("   Place OD standard in vial slot " + str(vial_id) + ", press enter when done")
-            interface.switch_light(True)
-            time.sleep(10)  # Because of time dependance of measured voltage
             ADCPi, pin = interface._OD_to_pin(vial_id)
             voltages[standard][jj] = interface._measure_voltage(ADCPi, pin)
-            interface.switch_light(False)
             print(f"   Mean voltage measured: {voltages[standard][jj]}V")
+
+    interface.switch_light(False)
 
     print("\nCalibration measurements complete. Now calculating voltage -> OD conversion.")
     ODs = np.array(ODs)
