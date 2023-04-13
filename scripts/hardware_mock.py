@@ -148,6 +148,7 @@ class IOPi(object):
         :raises ValueError: value out of range: 0 or 1
         """
         reg = None
+        tmp_pin = pin
         if pin >= 1 and pin <= 8:
             reg = a_register
             pin = pin - 1
@@ -160,7 +161,7 @@ class IOPi(object):
         if value < 0 or value > 1:
             raise ValueError("value out of range: 0 or 1")
 
-        print(f"[IOPi] __set_pin: {pin} {value} {reg}")
+        print(f"[IOPi] __set_pin: {tmp_pin} {bool(value)}")
 
         return
 
@@ -808,7 +809,8 @@ class ADCPi(object):
             raise ValueError("read_voltage: channel out of range (1 to 8 allowed)")
 
         print(f"[ADCPi] Reading voltage from channel: {channel}")
-        random_voltage = random.uniform(0, 5)
+        # random_voltage = random.uniform(0, 5)
+        random_voltage = 1
         print(f"[ADCPi] Mocking random voltage: {random_voltage}")
 
         return random_voltage

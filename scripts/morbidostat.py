@@ -24,6 +24,9 @@ class Morbidostat:
         self.ODs = np.zeros(len(self.cultures) + len(self.phage_vials))
         self.ODtimes = [0]
 
+        self.weights = np.zeros(len(self.cultures) + len(self.phage_vials))
+        self.weighttimes = [0]
+
     def set_pumps(self):
         def create_pump(number, input_type: str, input_number: int, output_type: str, output_number: int):
             pump = {
@@ -63,38 +66,58 @@ class Morbidostat:
         self.ODs = np.vstack([self.ODs, ODs])
         self.ODtimes.append(self.experiment_time())
 
-    def maintain_cultures(self, target_OD: float = 0.5, verbose: bool = False) -> None:
+    def record_weights(self) -> None:
+        """Measures weights of all vials and store these values along with the appropriate experiment time."""
+        weights = []
+        for vial in self.cultures + self.phage_vials:
+            weights += [self.interface.measure_weight(vial)]
+
+        self.weights = np.vstack([self.weights, weights])
+        self.weighttimes.append(self.experiment_time())
+
+    def maintain_cultures(self, target_OD: float = 0.5, verbose: bool = False) -> list:
         """Maintain all cultures at the target OD.
 
         Args:
             target_OD: target OD of the cultures. Defaults to 0.5.
-        """
-        for culture in self.cultures:
-            self.maintain_culture(culture, target_OD, verbose)
-        self.interface.run_pumps()
 
-    def maintain_culture(self, culture, target_OD: float = 0.5, verbose: bool = False) -> None:
+        Returns:
+            list of media volumes added to the cultures.
+        """
+        volumes_added = []
+        for culture in self.cultures:
+            volumes_added.append(self.maintain_culture(culture, target_OD, verbose))
+        self.interface.run_pumps()
+        return volumes_added
+
+    def maintain_culture(self, culture, target_OD: float = 0.5, verbose: bool = False) -> float:
         """Perform dilution of the culture to reach target OD (if above target) or does nothing (if below).
 
         Args:
             culture: culture number (1 is the first culture)
             target_OD: od to reach. Defaults to 0.5.
             verbose: prints information regarding the function. Defaults to False.
+
+        Returns:
+            volume added to the culture (in mL).
         """
         current_OD = self.interface.measure_OD(culture)
+        volume_to_pump = 0
         if current_OD > target_OD:
             dilution_ratio = current_OD / target_OD
             volume_to_pump = (dilution_ratio - 1) * self.vial_volume
             media_pump_number = self.get_pump_number("media", 1, "culture", culture)
-            self.interface.inject_volume(media_pump_number, volume_to_pump)
+            self.interface.inject_volume(media_pump_number, volume_to_pump, verbose=verbose)
 
             if verbose:
-                print(f"Culture {culture} has OD {current_OD}, above target OD {target_OD}.")
-                print(f"Pumping {volume_to_pump}mL via pump {media_pump_number}.")
+                print(f"Culture {culture} has OD {round(current_OD,3)}, above target OD {target_OD}.")
+                print(f"Pumping {round(volume_to_pump,3)}mL via pump {media_pump_number}.")
 
         else:
             if verbose:
                 print(f"Culture {culture} has OD {current_OD}, below target OD {target_OD}.")
+
+        return volume_to_pump
 
     def inject_bacteria(self, phage_vial: int, volume: float, verbose: bool = False) -> None:
         # TODO: make search for pump better so that this does not require specifying the input culture
@@ -103,21 +126,41 @@ class Morbidostat:
             print(
                 f"Injecting {round(volume,3)}mL from vial {self.cultures[0]} to vial {self.phage_vials[phage_vial-1]}"
             )
-        self.interface.inject_volume(pump_number, volume, run=True)
+        self.interface.inject_volume(pump_number, volume, verbose=verbose)
 
     def feedback(self) -> None:
         pass
 
-    def cycle(self) -> None:
-        self.maintain_cultures(0.3)
-        # TODO
+    def cycle(self, safety_factor=2) -> None:
+        """Runs a cycle of the experiment.
 
-    def run(self) -> None:
-        pass
+        Args:
+            safety_factor: This controls how much more is pumped out compared to pumped in. Defaults to 2.
+        """
+        self.record_ODs()
+        self.record_weights()
+
+        volumes = self.maintain_cultures(0.21, verbose=True)
+        if volumes[0] > 0:
+            self.inject_bacteria(1, safety_factor * volumes[0], verbose=True)
+        self.interface.run_pumps()
+        self.interface.wait_mixing(10)
+
+        self.record_weights()
+        self.record_ODs()
+        self.interface.remove_waste(max(volumes) * safety_factor, verbose=True)
+        self.record_weights()
+
+    def run(self, cycle_time=60, tot_time=600) -> None:
+        while self.experiment_time() < tot_time:
+            print()
+            print(f"Experiment time: {round(self.experiment_time(),1)}s")
+            self.cycle()
+            time.sleep(cycle_time)
 
 
 if __name__ == "__main__":
     morb = Morbidostat()
     morb.interface.switch_light(True)
-
+    tmp = morb.run()
     morb.interface.switch_light(False)

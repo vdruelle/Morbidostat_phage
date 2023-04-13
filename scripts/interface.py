@@ -5,7 +5,7 @@
 import asyncio
 import time
 
-MOCK = False
+MOCK = True
 
 import time
 
@@ -55,7 +55,7 @@ class Interface:
     def set_hardware_connections(self) -> None:
         """This function defines the physical connection from the different components to the pin of the RPi."""
 
-        self.adcs = [ADCPi(0x68, 0x69, 18)]
+        self.adcs = [ADCPi(0x68, 0x69, 14)]
         for adc in self.adcs:
             adc.set_pga(1)
             adc.set_bit_rate(14)  # 14 bits is read at 0.02 seconds, ~0.07mV precision with PGA 1 (8)
@@ -118,7 +118,7 @@ class Interface:
             values += [self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))]
         return np.mean(values)
 
-    def inject_volume(self, pump: int, volume: float, run=False) -> None:
+    def inject_volume(self, pump: int, volume: float, run=False, verbose=False) -> None:
         """Queue the inject of the pump for the given volume in mL.
 
         Args:
@@ -128,7 +128,7 @@ class Interface:
         """
         # TODO: Need to discuss how to do better for long term use
         dt = self._volume_to_time(pump, volume)
-        self._add_pumping(pump, dt)
+        self._add_pumping(pump, dt, verbose)
         if run == True:
             self.run_pumps()
 
@@ -157,23 +157,30 @@ class Interface:
             values += [self._voltage_to_weight(vial, self._measure_voltage(IOPi, pin))]
         return np.mean(values)
 
-    def remove_waste(self, volume: float) -> None:
+    def remove_waste(self, volume: float, verbose=False) -> None:
         """Runs the waste pump to remove a given volume.
 
         Args:
             volume: volume (in mL).
         """
         IOPi, pin = self.waste_pump["IOPi"], self.waste_pump["pin"]
+        if verbose:
+            print("Removing {volume}mL via waste pump.")
         self.iobuses[IOPi - 1].write_pin(pin, 1)
+        # TODO: this needs the calibration too
         time.sleep(volume)
         self.iobuses[IOPi - 1].write_pin(pin, 0)
+        if verbose:
+            print("Finished running waste pump.")
 
-    def wait_mixing(self, dt: float):
+    def wait_mixing(self, dt: float, verbose=False):
         """Wait mixing for a given amount of time.
 
         Args:
             dt: time (in seconds).
         """
+        if verbose:
+            print(f"Waiting {dt}s for mixing.")
         time.sleep(dt)
 
     def switch_light(self, state: bool) -> None:
@@ -265,7 +272,7 @@ class Interface:
             await asyncio.sleep(dt)
             self.iobuses[IOPi - 1].write_pin(pin, 0)
             if verbose:
-                print(f"Pump {pump} finished after {dt} seconds.")
+                print(f"Pump {pump} finished after {round(dt,2)} seconds.")
 
         self.asynctasks.append(asyncio.ensure_future(_pump_coroutine(self, pump, dt)))
 
