@@ -5,7 +5,7 @@
 import asyncio
 import time
 
-MOCK = True
+MOCK = False
 
 import time
 
@@ -165,10 +165,10 @@ class Interface:
         """
         IOPi, pin = self.waste_pump["IOPi"], self.waste_pump["pin"]
         if verbose:
-            print("Removing {volume}mL via waste pump.")
+            print(f"Removing {volume}mL via waste pump.")
         self.iobuses[IOPi - 1].write_pin(pin, 1)
         # TODO: this needs the calibration too
-        time.sleep(volume)
+        time.sleep(volume / 0.1)
         self.iobuses[IOPi - 1].write_pin(pin, 0)
         if verbose:
             print("Finished running waste pump.")

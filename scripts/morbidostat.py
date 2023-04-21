@@ -13,8 +13,8 @@ class Morbidostat:
         self.interface = Interface()
 
         # These need to be the same as the interface class
-        self.cultures = [1]  # Bacterial culture vials
-        self.phage_vials = [2]  # Experiment vials (with phages)
+        self.cultures = [2]  # Bacterial culture vials
+        self.phage_vials = [1]  # Experiment vials (with phages)
         self.vial_volume = 20  # In milliliters
         self.pumps = []
         self.set_pumps()
@@ -38,7 +38,6 @@ class Morbidostat:
 
         self.pumps += [create_pump(1, "media", 1, "culture", 1)]
         self.pumps += [create_pump(2, "culture", 1, "phage vial", 1)]
-        self.pumps += [create_pump(3, "phage vial", 1, "waste", 1)]
 
     def get_pump_number(self, input_type: str, input_number: int, output_type: str, output_number: int):
         pump = [
@@ -85,12 +84,12 @@ class Morbidostat:
             list of media volumes added to the cultures.
         """
         volumes_added = []
-        for culture in self.cultures:
+        for culture in range(len(self.cultures)):
             volumes_added.append(self.maintain_culture(culture, target_OD, verbose))
         self.interface.run_pumps()
         return volumes_added
 
-    def maintain_culture(self, culture, target_OD: float = 0.5, verbose: bool = False) -> float:
+    def maintain_culture(self, culture_idx, target_OD: float = 0.5, verbose: bool = False) -> float:
         """Perform dilution of the culture to reach target OD (if above target) or does nothing (if below).
 
         Args:
@@ -101,21 +100,21 @@ class Morbidostat:
         Returns:
             volume added to the culture (in mL).
         """
-        current_OD = self.interface.measure_OD(culture)
+        current_OD = self.interface.measure_OD(self.cultures[culture_idx])
         volume_to_pump = 0
         if current_OD > target_OD:
             dilution_ratio = current_OD / target_OD
             volume_to_pump = (dilution_ratio - 1) * self.vial_volume
-            media_pump_number = self.get_pump_number("media", 1, "culture", culture)
+            media_pump_number = self.get_pump_number("media", 1, "culture", culture_idx + 1)
             self.interface.inject_volume(media_pump_number, volume_to_pump, verbose=verbose)
 
             if verbose:
-                print(f"Culture {culture} has OD {round(current_OD,3)}, above target OD {target_OD}.")
+                print(f"Vial {culture_idx} has OD {round(current_OD,3)}, above target OD {target_OD}.")
                 print(f"Pumping {round(volume_to_pump,3)}mL via pump {media_pump_number}.")
 
         else:
             if verbose:
-                print(f"Culture {culture} has OD {current_OD}, below target OD {target_OD}.")
+                print(f"Vial {culture_idx} has OD {current_OD}, below target OD {target_OD}.")
 
         return volume_to_pump
 
@@ -140,7 +139,7 @@ class Morbidostat:
         self.record_ODs()
         self.record_weights()
 
-        volumes = self.maintain_cultures(0.21, verbose=True)
+        volumes = self.maintain_cultures(0.1, verbose=True)
         if volumes[0] > 0:
             self.inject_bacteria(1, safety_factor * volumes[0], verbose=True)
         self.interface.run_pumps()
@@ -162,5 +161,5 @@ class Morbidostat:
 if __name__ == "__main__":
     morb = Morbidostat()
     morb.interface.switch_light(True)
-    tmp = morb.run()
-    morb.interface.switch_light(False)
+    # tmp = morb.run()
+    # morb.interface.switch_light(False)
