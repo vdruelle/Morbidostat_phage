@@ -5,12 +5,12 @@
 import asyncio
 import time
 
+import numpy as np
+import RPi.GPIO as GPIO
+import yaml
+
 MOCK = False
 
-import time
-
-import numpy as np
-import yaml
 
 if MOCK is False:
     from hardware_libraries import ADCPi, IOPi
@@ -28,10 +28,10 @@ class Interface:
         self.weight_sensors = []
         # self.ODs[1] is a dictionary with the ADC number + pin number to first vial OD
         self.ODs = []
-        # same as above but with only 1 value
-        self.lights = {}
-        # same as above but with only 1 value
-        self.waste_pump = {}
+        # This is the pin number (on the RPi, not on the IOPi) for the lights
+        self.lights = None
+        # This is the pin number (on the RPi, not on the IOPi) for the waste pump
+        self.waste_pump = None
         # list of integers for the vials (usally 1 to 15 included)
         self.vials = []
 
@@ -55,26 +55,51 @@ class Interface:
     def set_hardware_connections(self) -> None:
         """This function defines the physical connection from the different components to the pin of the RPi."""
 
-        self.adcs = [ADCPi(0x68, 0x69, 14)]
+        # Setting up the 4 ADCPi
+        self.adcs = [
+            ADCPi(0x68, 0x69, 14),
+            ADCPi(0x6A, 0x6B, 14),
+            ADCPi(0x6C, 0x6D, 14),
+            ADCPi(0x6E, 0x6F, 14),
+        ]
         for adc in self.adcs:
             adc.set_pga(1)
             adc.set_bit_rate(14)  # 14 bits is read at 0.02 seconds, ~0.07mV precision with PGA 1 (8)
 
-        self.iobuses = [IOPi(0x20)]
+        # Setting up the 2 IOPi (each board contains 2 chips, hence 4 addresses)
+        self.iobuses = [
+            IOPi(0x20),
+            IOPi(0x21),
+            IOPi(0x22),
+            IOPi(0x23),
+        ]
         for iobus in self.iobuses:
             for ii in range(1, 17):
                 iobus.set_pin_direction(ii, 0)
 
-        self.vials = [1, 2]
-        self.lights = {"IOPi": 1, "pin": 1}
-        self.waste_pump = {"IOPi": 1, "pin": 2}
+        # Setting up vials
+        self.vials = list(range(1, 15))
 
-        for ii in range(3, 9):
+        # Setting up lights and waste pump (controlled by the RPi directly)
+        self.lights = 20  # Pin 20
+        self.waste_pump = 21  # Pin 21
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.lights, GPIO.OUT)
+        GPIO.output(self.lights, GPIO.LOW)
+        GPIO.setup(self.waste_pump, GPIO.OUT)
+        GPIO.output(self.waste_pump, GPIO.LOW)
+
+        # Setting up pumps and measurements
+        for ii in range(1, 16):
             self.pumps += [{"IOPi": 1, "pin": ii}]
-        for ii in range(1, 5):
+        for ii in range(1, 9):
             self.ODs += [{"ADCPi": 1, "pin": ii}]
-        for ii in range(5, 9):
-            self.weight_sensors += [{"ADCPi": 1, "pin": ii}]
+        for ii in range(1, 8):
+            self.ODs += [{"ADCPi": 2, "pin": ii}]
+        for ii in range(1, 9):
+            self.weight_sensors += [{"ADCPi": 3, "pin": ii}]
+        for ii in range(1, 8):
+            self.weight_sensors += [{"ADCPi": 4, "pin": ii}]
 
     def load_calibration(self, file) -> None:
         """Load the calibration file, process it and saves it in the Interface class.
@@ -118,7 +143,9 @@ class Interface:
             values += [self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))]
         return np.mean(values)
 
-    def inject_volume(self, pump: int, volume: float, run=False, verbose=False) -> None:
+    def inject_volume(
+        self, pump: int, volume: float, max_volume: float = 10, run=False, verbose=False
+    ) -> None:
         """Queue the inject of the pump for the given volume in mL.
 
         Args:
@@ -127,7 +154,7 @@ class Interface:
             run: Whether to queue the pumping (asynchronous) or to run it directly (sequential). Defaults to False.
         """
         # TODO: Need to discuss how to do better for long term use
-        dt = self._volume_to_time(pump, volume)
+        dt = self._volume_to_time(pump, min(volume, max_volume))
         self._add_pumping(pump, dt, verbose)
         if run == True:
             self.run_pumps()
@@ -165,11 +192,12 @@ class Interface:
         """
         IOPi, pin = self.waste_pump["IOPi"], self.waste_pump["pin"]
         if verbose:
-            print(f"Removing {volume}mL via waste pump.")
-        self.iobuses[IOPi - 1].write_pin(pin, 1)
-        # TODO: this needs the calibration too
-        time.sleep(volume / 0.1)
-        self.iobuses[IOPi - 1].write_pin(pin, 0)
+            print(f"Removing {round(volume,1)}mL via waste pump.")
+        if volume > 0:
+            self.switch_waste_pump(True)
+            # TODO: this needs the calibration too
+            time.sleep(volume / 0.1)
+            self.switch_waste_pump(False)
         if verbose:
             print("Finished running waste pump.")
 
@@ -191,7 +219,23 @@ class Interface:
         """
         assert state in [True, False], f"State {state} is not valid"
 
-        self.iobuses[self.lights["IOPi"] - 1].write_pin(self.lights["pin"], state)
+        if state:
+            GPIO.output(self.lights, GPIO.HIGH)
+        else:
+            GPIO.output(self.lights, GPIO.LOW)
+
+    def switch_waste_pump(self, state: bool) -> None:
+        """Turns the waste pump to the given state. True is on, False is off.
+
+        Args:
+            state: True turns the pump on, False turns the pump off.
+        """
+        assert state in [True, False], f"State {state} is not valid"
+
+        if state:
+            GPIO.output(self.waste_pump, GPIO.HIGH)
+        else:
+            GPIO.output(self.waste_pump, GPIO.LOW)
 
     def turn_off(self) -> None:
         """Turns everything controlled by the interface to off state."""
@@ -199,7 +243,7 @@ class Interface:
             IOPi, pin = self._pump_to_pin(pump)
             self.iobuses[IOPi - 1].write_pin(pin, 0)
         self.switch_light(False)
-        self.iobuses[self.waste_pump["IOPi"] - 1].write_pin(self.waste_pump["pin"], 0)
+        self.switch_waste_pump(False)
 
     # --- Medium level functions ---
 
@@ -281,12 +325,13 @@ class Interface:
     def _pump_to_pin(self, pump: int) -> int:
         """Return the IOPi and pin number associated to the pump.
 
-        Args:
-            pump: number associated to the pump
+                Args:
+                    pump: number associated to the pump
+        read_voltage(adc_pin)
 
-        Returns:
-            IOPi: IOPi number (first IOPi means self.iobuses[0])
-            pin: physical pin on the IOPi
+                Returns:
+                    IOPi: IOPi number (first IOPi means self.iobuses[0])
+                    pin: physical pin on the IOPi
         """
         available_pumps = list(range(1, len(self.pumps) + 1))
         assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
@@ -346,21 +391,24 @@ class Interface:
 
 
 if __name__ == "__main__":
-    try:
-        asynchronous = True
+    # try:
+    #     asynchronous = True
 
-        tmp = Interface()
-        print("test")
+    #     tmp = Interface()
+    #     print("test")
 
-        if asynchronous:
-            tmp.inject_volume(1, 0.3)
-            tmp.inject_volume(2, 0.6)
-            tmp.run_pumps()
-        else:
-            tmp.inject_volume(1, 0.3, run=True)
-            tmp.inject_volume(2, 0.6, run=True)
+    #     if asynchronous:
+    #         tmp.inject_volume(1, 0.3)
+    #         tmp.inject_volume(2, 0.6)
+    #         tmp.run_pumps()
+    #     else:
+    #         tmp.inject_volume(1, 0.3, run=True)
+    #         tmp.inject_volume(2, 0.6, run=True)
 
-        print("test2")
+    #     print("test2")
 
-    finally:
-        tmp.turn_off()
+    # finally:
+    #     tmp.turn_off()
+
+    pass
+    pass

@@ -146,9 +146,9 @@ def precision(interface: Interface) -> None:
 if __name__ == "__main__":
     try:
         interface = Interface()
-        # read_time(interface, bitrate=14)
+        read_time(interface, bitrate=14)
         # light_switching(interface)
-        OD_convergence(interface)
+        # OD_convergence(interface)
         # precision(interface)
     finally:
         interface.turn_off()

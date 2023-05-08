@@ -2,6 +2,7 @@
 
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 from interface import Interface
 
@@ -139,27 +140,47 @@ class Morbidostat:
         self.record_ODs()
         self.record_weights()
 
-        volumes = self.maintain_cultures(0.1, verbose=True)
-        if volumes[0] > 0:
-            self.inject_bacteria(1, safety_factor * volumes[0], verbose=True)
-        self.interface.run_pumps()
+        volumes = self.maintain_cultures(0.35, verbose=True)
+        # if volumes[0] > 0:
+        #     self.inject_bacteria(1, volumes[0], verbose=True)
+
+        weight = 1000
+        while weight > self.weights[-1, 0]:
+            weight = self.interface.measure_weight(1)
+            print(f"Current weight is {weight}, removing more")
+            self.inject_bacteria(1, volumes[0] / 10, verbose=True)
+            self.interface.run_pumps()
         self.interface.wait_mixing(10)
 
         self.record_weights()
         self.record_ODs()
-        self.interface.remove_waste(max(volumes) * safety_factor, verbose=True)
+        self.interface.remove_waste(max(volumes) * safety_factor * safety_factor, verbose=True)
         self.record_weights()
 
-    def run(self, cycle_time=60, tot_time=600) -> None:
+    def run(self, cycle_time=60, tot_time=3600) -> None:
         while self.experiment_time() < tot_time:
             print()
             print(f"Experiment time: {round(self.experiment_time(),1)}s")
             self.cycle()
             time.sleep(cycle_time)
 
+    def plots(self) -> None:
+        plt.figure()
+        plt.plot(self.ODtimes, self.ODs)
+        plt.ylabel("OD [a.u.]")
+        plt.xlabel("Time [sec]")
+
+        plt.figure()
+        plt.plot(self.weighttimes, self.weights)
+        plt.ylabel("Weight [grams]")
+        plt.xlabel("Time [sec]")
+
+        plt.show()
+
 
 if __name__ == "__main__":
     morb = Morbidostat()
     morb.interface.switch_light(True)
-    # tmp = morb.run()
+    time.sleep(100)
+    # morb.run()
     # morb.interface.switch_light(False)
