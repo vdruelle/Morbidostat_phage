@@ -1,6 +1,7 @@
 import smbus
 from hardware_libraries import ADCPi, IOPi
 from interface import Interface
+import RPi.GPIO as GPIO
 
 
 def test_I2C_connections():
@@ -24,8 +25,8 @@ def test_I2C_connections():
     print()
 
 
-def test_ADCPi(threshold_voltage=0.05):
-    """Reads voltage from all the pins of all the ADCPis. Perform this test with the lights on.
+def test_ADCPi(threshold_voltage=0.05, light_pin = 20):
+    """Reads voltage from all the pins of all the ADCPis. Perform this test with empty vials in place.
     Write as output which pin got a voltage reading that is below threshold.
     """
     adcs = [
@@ -34,6 +35,11 @@ def test_ADCPi(threshold_voltage=0.05):
         ADCPi(0x6C, 0x6D, 14),
         ADCPi(0x6E, 0x6F, 14),
     ]
+
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(light_pin, GPIO.OUT)
+    GPIO.output(light_pin, GPIO.HIGH)
 
     print("Performing ADCPi read tests:")
     for adc in adcs:
@@ -45,10 +51,12 @@ def test_ADCPi(threshold_voltage=0.05):
                 print(
                     f"    ADC {adc.get_i2c_address1():02X} {adc.get_i2c_address2():02X} {pin} voltage is {v:0.3f}"
                 )
+
+    GPIO.output(light_pin, GPIO.LOW)
     print("Scanning complete.")
     print()
 
 
 if __name__ == "__main__":
-    # test_I2C_connections()
-    # test_ADCPi()
+    test_I2C_connections()
+    test_ADCPi()

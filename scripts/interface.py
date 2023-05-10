@@ -190,7 +190,6 @@ class Interface:
         Args:
             volume: volume (in mL).
         """
-        IOPi, pin = self.waste_pump["IOPi"], self.waste_pump["pin"]
         if verbose:
             print(f"Removing {round(volume,1)}mL via waste pump.")
         if volume > 0:
@@ -410,5 +409,4 @@ if __name__ == "__main__":
     # finally:
     #     tmp.turn_off()
 
-    pass
     pass
