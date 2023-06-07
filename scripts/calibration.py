@@ -115,8 +115,6 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
         interface._add_pumping(pump_id, 20)
     interface.run_pumps()
 
-    # All vials weigh the same? -> not exactly
-    # Improvement: run all pumps in parallel -> no, there is only one scale
     weight = input("Current weight of vial: ")
     for pump_idx, pump_id in enumerate(pumps):  # iterate over all pumps and asks for weights
         print(f"Calibrating pump {pump_id}")
@@ -134,6 +132,35 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
 
     print(f"Saving data in {filename}.")
     np.savetxt(CALI_PATH + filename, pump_rates)
+
+
+def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
+    # Pre-fill
+    print("\nStarting calibration for waste pump. Put inlets and water and outlets in an empty vial.")
+    input("When the setup is ready press enter. It will run pump for 20s to fill the tubing.")
+    interface.switch_waste_pump(True)
+    time.sleep(20)
+    interface.switch_waste_pump(False)
+
+    input("Now put the outlets in seperate graduated 15mL tubes. Press enter when ready.")
+
+    # Calibration
+    interface.switch_waste_pump(True)
+    time.sleep(dt)
+    interface.switch_waste_pump(False)
+
+    volumes = []
+    while True:
+        v = input("Volume in the vial ('stop' when all volumes added): ")
+        if v == "stop":
+            break
+        else:
+            volumes += [float(v)]
+
+    pump_rate = np.mean(volumes) / dt  # mL*s^-1
+    print(f"Computing average rate and saving it in {filename}.")
+    with open(CALI_PATH + filename, "w") as file:
+        file.write(str(pump_rate))
 
 
 # Q: Would it not be better to specify pump volume and rate rather than time?
@@ -228,13 +255,14 @@ def calibrate_weight_sensors(
     plt.show()
 
 
-def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, output: str):
+def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, cali_waste_pump: str, output: str):
     fits_OD = np.loadtxt(CALI_PATH + cali_OD)
     fits_WS = np.loadtxt(CALI_PATH + cali_WS)
     rate_pumps = np.loadtxt(CALI_PATH + cali_pumps)
+    rate_waste_pump = np.loadtxt(CALI_PATH + cali_waste_pump)
 
     print()
-    print(f"Concatenating {cali_OD}, {cali_WS} and {cali_pumps}")
+    print(f"Concatenating {cali_OD}, {cali_WS}, {cali_pumps} and {cali_waste_pump}")
 
     calibration_dict = {}
 
@@ -259,6 +287,8 @@ def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, output: str)
         cali_pumps[f"pump {ii+1}"] = {"rate": {"value": float(rate_pumps[ii]), "units": "mL.s^-1"}}
     calibration_dict["pumps"] = cali_pumps
 
+    calibration_dict["waste_pump"] = {"rate": {"value": float(rate_waste_pump), "units": "mL.s^-1"}}
+
     with open(CALI_PATH + output + ".yaml", "w") as f:
         yaml.dump(calibration_dict, f)
 
@@ -270,21 +300,21 @@ if __name__ == "__main__":
     # Can still run interactively if no arguments are passed
     # But allows extra arguments to be passed for specific actions
     # Like plotting only
-    try:
-        interface = Interface()
-        choice = input("What would you like to calibrate ? [OD, pumps, WS, concatenate]: ")
-        if choice == "OD":
-            calibrate_OD(interface, "OD.txt", nb_standards=5, vials=[1, 2])
-        elif choice == "pumps":
-            calibrate_pumps(interface, "pumps.txt", [1, 2, 3])
-        elif choice == "WS":
-            calibrate_weight_sensors(interface, "WS.txt", vials=[1, 2])
-        elif choice == "concatenate":
-            t = time.localtime()
-            date_string = f"{t.tm_mon:02d}-{t.tm_mday:02d}-{t.tm_hour:02d}h-{t.tm_min:02d}min"
-            group_calibrations("OD.txt", "WS.txt", "pumps.txt", date_string)
-        else:
-            print(f"{choice} is not in the available actions: [OD, pumps, WS, concatenate]")
-
-    finally:  # This executes among program exiting (error or pressing ctrl+C)
-        interface.turn_off()
+    interface = Interface()
+    choice = input("What would you like to calibrate ? [OD, pumps, waste, WS, concatenate]: ")
+    if choice == "OD":
+        calibrate_OD(interface, "OD.txt", nb_standards=5, vials=[1, 2])
+    elif choice == "pumps":
+        calibrate_pumps(interface, "pumps.txt", [1, 2, 3])
+    elif choice == "waste":
+        calibrate_waste_pump(interface, "waste_pump.txt")
+    elif choice == "WS":
+        calibrate_weight_sensors(interface, "WS.txt", vials=[1, 2])
+    elif choice == "concatenate":
+        # This takes the time given by the RPi, which desyncs when it is turned off.
+        # One can update it via the consol by typing (american format, months first): sudo date -s "06/07/2023 11:46"
+        t = time.localtime()
+        date_string = f"{t.tm_mon:02d}-{t.tm_mday:02d}-{t.tm_hour:02d}h-{t.tm_min:02d}min"
+        group_calibrations("OD.txt", "WS.txt", "pumps.txt", "waste_pump.txt", date_string)
+    else:
+        print(f"{choice} is not in the available actions: [OD, pumps, waste, WS, concatenate]")

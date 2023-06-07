@@ -50,6 +50,12 @@ class Interface:
         self.load_calibration("03-21-15h-06min.yaml")
         self.turn_off()
 
+    # Destructor of the interface. Gets called when the interface object is deleted, used to reset setup.
+    def __del__(self):
+        print("Interface destructor called.")
+        self.turn_off()
+        GPIO.cleanup()
+
     # --- Hardware setup ---
 
     def set_hardware_connections(self) -> None:
@@ -73,11 +79,12 @@ class Interface:
             IOPi(0x22),
             IOPi(0x23),
         ]
+        # Setting all IOPi pins to write instead of read
         for iobus in self.iobuses:
             for ii in range(1, 17):
                 iobus.set_pin_direction(ii, 0)
 
-        # Setting up vials
+        # Setting up vials0
         self.vials = list(range(1, 15))
 
         # Setting up lights and waste pump (controlled by the RPi directly)
