@@ -47,7 +47,7 @@ class Interface:
 
         # Loading calibration, it's a dict with the same format as the .yaml calibration file
         self.calibration = None
-        self.load_calibration("03-21-15h-06min.yaml")
+        self.load_calibration("06-07-11h-47min.yaml")
         self.turn_off()
 
     # Destructor of the interface. Gets called when the interface object is deleted, used to reset setup.
@@ -85,7 +85,7 @@ class Interface:
                 iobus.set_pin_direction(ii, 0)
 
         # Setting up vials0
-        self.vials = list(range(1, 15))
+        self.vials = list(range(1, 16))
 
         # Setting up lights and waste pump (controlled by the RPi directly)
         self.lights = 20  # Pin 20
@@ -103,10 +103,27 @@ class Interface:
             self.ODs += [{"ADCPi": 1, "pin": ii}]
         for ii in range(1, 8):
             self.ODs += [{"ADCPi": 2, "pin": ii}]
-        for ii in range(1, 9):
-            self.weight_sensors += [{"ADCPi": 3, "pin": ii}]
-        for ii in range(1, 8):
-            self.weight_sensors += [{"ADCPi": 4, "pin": ii}]
+
+        # Vial 1 is pin 8 on ADC3, vial 2 is pin 6 on ADC3, .... vial 15 is pin 7 on ADC4.
+        ADC_pos = [
+            (3, 8),
+            (3, 6),
+            (3, 5),
+            (3, 3),
+            (3, 2),
+            (3, 1),
+            (4, 5),
+            (3, 4),
+            (4, 2),
+            (3, 7),
+            (4, 1),
+            (4, 3),
+            (4, 4),
+            (4, 6),
+            (4, 7),
+        ]
+        for pos in ADC_pos:
+            self.weight_sensors += [{"ADCPi": pos[0], "pin": pos[1]}]
 
     def load_calibration(self, file) -> None:
         """Load the calibration file, process it and saves it in the Interface class.
@@ -121,12 +138,16 @@ class Interface:
             self.calibration = yaml.load(stream, Loader=yaml.loader.BaseLoader)
 
         # Converting values from string to floats
-        for key1 in self.calibration.keys():
+        for key1 in ["OD", "WS", "pumps"]:
             for key2 in self.calibration[key1].keys():
                 for key3 in self.calibration[key1][key2].keys():
                     self.calibration[key1][key2][key3]["value"] = float(
                         self.calibration[key1][key2][key3]["value"]
                     )
+
+        self.calibration["waste_pump"]["rate"]["value"] = float(
+            self.calibration["waste_pump"]["rate"]["value"]
+        )
 
     # --- High level functions ---
 
@@ -171,6 +192,16 @@ class Interface:
         loop = asyncio.get_event_loop()
         loop.run_until_complete(asyncio.gather(*self.asynctasks))
         self.asynctasks = []
+
+    def run_all_pumps(self, dt: float) -> None:
+        """Runs all the pumps at once for the given amount of time.
+
+        Args:
+            dt: time (in seconds) of pumping.
+        """
+        for pump in range(1, len(self.pumps) + 1):
+            self._add_pumping(pump, dt)
+        self.run_pumps()
 
     def measure_weight(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> None:
         """Measures the mean weight (in grams) over nb_measures from given vial.
@@ -397,23 +428,4 @@ class Interface:
 
 
 if __name__ == "__main__":
-    # try:
-    #     asynchronous = True
-
-    #     tmp = Interface()
-    #     print("test")
-
-    #     if asynchronous:
-    #         tmp.inject_volume(1, 0.3)
-    #         tmp.inject_volume(2, 0.6)
-    #         tmp.run_pumps()
-    #     else:
-    #         tmp.inject_volume(1, 0.3, run=True)
-    #         tmp.inject_volume(2, 0.6, run=True)
-
-    #     print("test2")
-
-    # finally:
-    #     tmp.turn_off()
-
-    pass
+    tmp = Interface()

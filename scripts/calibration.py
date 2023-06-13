@@ -11,7 +11,6 @@ from scipy.stats import linregress
 CALI_PATH = "calibrations/"
 
 
-# ENH: Save calibration state after every standard -> can resume if interrupted/errors
 def calibrate_OD(
     interface: Interface,
     filename: str,
@@ -92,10 +91,10 @@ def calibrate_OD(
     plt.show()
 
 
-def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float = 30):
-    """Function to perform the calibration of the pumps. For now it is done by connecting all the pumps and
-    putting their inlet in water and their outlet on the scale. Then each pump is run for dt seconds and the
-    user is asked for the new weight. Pumping rates are inferred from the difference in weights.
+def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float = 120):
+    """Function to perform the calibration of the pumps. It is done by weighing each of the calibration vials
+    before and entering their weights, then running the pumps for dt seconds, and then weighing the vials
+    again and entering their weights. Pumping rates are inferred from the difference in weights.
     Saves the pumping rate in a file with the given filename.
 
     Args:
@@ -107,26 +106,40 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     weights = np.zeros((2, len(pumps)))  # Pumps are columns, first line is weight before and second is after
 
     print(f"\nStarting pump calibration for pumps {pumps}.")
-    print("Put inlet of all pumps in water. Put outlet of pumps in vial on a balance")
 
-    input("When the setup is ready press enter. It will run all the pumps for 20s to fill the tubing.")
-    for pump_id in pumps:
-        print(f"Running pump {pump_id}")
-        interface._add_pumping(pump_id, 20)
-    interface.run_pumps()
-
-    weight = input("Current weight of vial: ")
-    for pump_idx, pump_id in enumerate(pumps):  # iterate over all pumps and asks for weights
-        print(f"Calibrating pump {pump_id}")
+    print("\nLet's start by weighing the vials before the pumping.")
+    for pump_idx, pump_id in enumerate(pumps):
+        weight = input(f"    Weight of vial {pump_id}: ")
         weights[0, pump_idx] = weight
-        interface._add_pumping(pump_id, dt)
+    print("Weight of vials before pumping has been saved.")
+
+    print("\nPut inlet and outlet of all pumps in water.")
+    input("When the setup is ready press enter. It will run all the pumps for 30s to fill the tubing.")
+    tubes_filled = False
+    while not tubes_filled:
+        for pump_id in pumps:
+            print(f"Running pump {pump_id}")
+            interface._add_pumping(pump_id, 30)
         interface.run_pumps()
-        weight = input("    Measured weight of vial: ")
+        tmp = input("Are the tubes filled ? [yes/no]")
+        if tmp == "yes":
+            tubes_filled = True
+
+    input("\nNow put the outlet of the pumps inside their respective tubes. Press enter when ready.")
+
+    print("Starting pumping.")
+    for pump_id in pumps:  # add pumping for all pumps
+        interface._add_pumping(pump_id, dt)
+    interface.run_pumps()
+    print("Pumping done.")
+
+    print("\nNow we measure the weights of the vials again.")
+    for pump_idx, pump_id in enumerate(pumps):
+        weight = input("    Weight of vial {pump_id}: ")
         weights[1, pump_idx] = weight
+    print("Weight of vials after pumping has been saved.")
 
-    print()
-    print("Calibration manipulation complete. Computing pumping rate.")
-
+    print("Computing pumping rates.")
     # calculate pump_rate and save to file
     pump_rates = (weights[1, :] - weights[0, :]) / dt  # g.s^-1 <=> mL*s^-1
 
@@ -135,6 +148,18 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
 
 
 def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
+    """Function to perform the calibration of the waste pump. It is done by connecting a couple of tubes
+    (ideally 3) through the pump, with inlet in water and outlet in separate 15mL Falcon tubes. Then
+    the pump is run for dt seconds, and the user is asked for the volumes in the tubes. The flow rate
+    is inferred from that and saved in a file with the given filename. The pump rate of this pump should
+    not vary as it is pressure insensitive and its speed is defined by the hardware.
+
+    Args:
+        interface: Interface object from interface.py file.
+        filename: name of the savefile.
+        dt: Pumping time in seconds. Defaults to 20.
+    """
+
     # Pre-fill
     print("\nStarting calibration for waste pump. Put inlets and water and outlets in an empty vial.")
     input("When the setup is ready press enter. It will run pump for 20s to fill the tubing.")
@@ -163,8 +188,6 @@ def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
         file.write(str(pump_rate))
 
 
-# Q: Would it not be better to specify pump volume and rate rather than time?
-# A: That would also work, having time is better for checking externally (with chronometer)
 def calibrate_weight_sensors(
     interface: Interface,
     filename: str,
@@ -305,7 +328,7 @@ if __name__ == "__main__":
     if choice == "OD":
         calibrate_OD(interface, "OD.txt", nb_standards=5, vials=[1, 2])
     elif choice == "pumps":
-        calibrate_pumps(interface, "pumps.txt", [1, 2, 3])
+        calibrate_pumps(interface, "pumps.txt", list(range(1, 16)))
     elif choice == "waste":
         calibrate_waste_pump(interface, "waste_pump.txt")
     elif choice == "WS":
