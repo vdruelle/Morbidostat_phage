@@ -16,7 +16,7 @@ def calibrate_OD(
     filename: str,
     nb_standards: int,
     vials: list = list(range(1, 16)),
-    nb_measures: int = 1,
+    nb_measures: int = 10,
     lag: float = 0.02,
     voltage_threshold: float = 4.8,
 ) -> None:
@@ -30,7 +30,7 @@ def calibrate_OD(
         interface: Interface object from the interface.py file.
         filename: name of the save file.
         nb_standards: number of OD standard to calibrate on.
-        vials: list of 1-indexed vials to calibrate. Defaults to list(range(1, 16)). # Q: Does order matter? If not -> use set
+        vials: list of 1-indexed vials to calibrate. Defaults to list(range(1, 16)).
         nb_measure: number of voltage measures to average for each data point. Defaults to 1.
         lag: time between voltage measures in seconds. Defaults to 0.02.
         voltage_threshold: Used to estimate if there is overflow and exclude data point [V]. Defaults to 4.8.
@@ -57,8 +57,7 @@ def calibrate_OD(
 
         for jj, vial_id in enumerate(vials):  # iterating over all vials for the current OD standard
             input("   Place OD standard in vial slot " + str(vial_id) + ", press enter when done")
-            ADCPi, pin = interface._OD_to_pin(vial_id)
-            voltages[standard][jj] = interface._measure_voltage(ADCPi, pin)
+            voltages[standard][jj] = interface.measure_OD_voltage(vial_id, lag, nb_measures)
             print(f"   Mean voltage measured: {voltages[standard][jj]}V")
 
     interface.switch_light(False)
@@ -117,10 +116,7 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     input("When the setup is ready press enter. It will run all the pumps for 30s to fill the tubing.")
     tubes_filled = False
     while not tubes_filled:
-        for pump_id in pumps:
-            print(f"Running pump {pump_id}")
-            interface._add_pumping(pump_id, 30)
-        interface.run_pumps()
+        interface.run_all_pumps(30, True)
         tmp = input("Are the tubes filled ? [yes/no]")
         if tmp == "yes":
             tubes_filled = True
@@ -128,9 +124,7 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     input("\nNow put the outlet of the pumps inside their respective tubes. Press enter when ready.")
 
     print("Starting pumping.")
-    for pump_id in pumps:  # add pumping for all pumps
-        interface._add_pumping(pump_id, dt)
-    interface.run_pumps()
+    interface.run_all_pumps(dt, True)
     print("Pumping done.")
 
     print("\nNow we measure the weights of the vials again.")
@@ -149,7 +143,7 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
 
 def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
     """Function to perform the calibration of the waste pump. It is done by connecting a couple of tubes
-    (ideally 3) through the pump, with inlet in water and outlet in separate 15mL Falcon tubes. Then
+    (ideally >=3) through the pump, with inlet in water and outlet in separate 15mL Falcon tubes. Then
     the pump is run for dt seconds, and the user is asked for the volumes in the tubes. The flow rate
     is inferred from that and saved in a file with the given filename. The pump rate of this pump should
     not vary as it is pressure insensitive and its speed is defined by the hardware.
@@ -191,22 +185,22 @@ def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
 def calibrate_weight_sensors(
     interface: Interface,
     filename: str,
-    pump_times: int = [20, 40, 60],
-    pump: int = 1,
-    pumping_rate: float = 9e-2,
+    pump_times: int = [10, 20, 30, 40, 50, 60],
+    pumping_rate: float = 0.47,
     vials: list = list(range(1, 16)),
-    empty_vial_weight: float = 42,
+    empty_vial_weight: float = 33.5,
+    nb_measures: int = 10,
+    lag: float = 0.02,
     voltage_threshold: float = 4.8,
 ) -> None:
     """Function to perform the calibration of the weight sensors. This has to be done after the calibration
-    of the pumps as it uses the pumps to input a certain volume of liquid, and then calibrate readings
+    of the waste pump as it uses the pump to input a certain volume of liquid, and then calibrate readings
     depending on the increase in weight.
 
     Args:
         interface: Interface class defined in the interface.py file.
         filename: name of the savefile.
         pump_times: Pumping time for calibration in seconds. Defaults to [20, 40, 60].
-        pump: ID of pump used for calibration. Defaults to 1.
         pumping_rate: Pumping rate of the pump in mL/s^-1. 9e-2.
         vials: list of weight sensor IDs to calibrate. Defaults to list(range(1, 16)).
         empty_vial_weight: Weight of empty vial in grams. Defaults to 42.
@@ -219,35 +213,33 @@ def calibrate_weight_sensors(
 
     print()
     print(f"Starting calibration for weight sensors of vials {vials}.")
-    input(f"Put the inlet and outlet of pump {pump} in water to pre-fill the tubes, then press enter.")
+    input(f"Put the inlet and outlet of the waste pump in water to pre-fill the tubes, then press enter.")
 
-    print(f"Running pump {pump} for 15 seconds.")
-    interface._add_pumping(pump, 15)
-    interface.run_pumps()
+    print(f"Running waste pump for 30 seconds.")
+    interface.run_waste_pump(30, verbose=True)
     print(f"Pre-filling done.")
 
     voltages = np.zeros((len(pump_times) + 1, len(vials)))
 
     for vial_idx, vial_id in enumerate(vials):
         print()
-        input(f"Put outlet of pump {pump} in the vial {vial_id}, then press enter.")
+        input(f"Put outlet of waste pump in the vial {vial_id}, then press enter.")
         tot_time = 0
-        ADCPi, pin = interface._WS_to_pin(vial_id)
-        voltages[0, vial_idx] = interface._measure_voltage(ADCPi, pin)  # empty vial
+        voltages[0, vial_idx] = interface.measure_WS_voltage(vial_id, lag, nb_measures)  # empty vial
         print(f"    Empty vial voltage: {voltages[0,vial_idx]}")
 
         # Why not pump and measure more often? E.g. 2s on, 1s off etc? -> measuring requires human intervention
         for pump_time_idx, t in enumerate(pump_times):
             dt = t - tot_time
-            interface._add_pumping(pump, dt)
-            interface.run_pumps()
+            interface.switch_waste_pump(True)
+            time.sleep(dt)
+            interface.switch_waste_pump(False)
             time.sleep(1)
-            ADCPi, pin = interface._WS_to_pin(vial_id)
-            voltages[pump_time_idx + 1, vial_idx] = interface._measure_voltage(ADCPi, pin)
+            voltages[pump_time_idx + 1, vial_idx] = interface.measure_WS_voltage(vial_id, lag, nb_measures)
             tot_time = t
             print(f"    Measuring voltage after {tot_time}s: {voltages[pump_time_idx+1, vial_idx]}")
 
-        print(f"Calibration of weight sensor {vial_id} done².")
+        print(f"Calibration of weight sensor {vial_id} done.")
 
     # Computing the fit for all vials
     weights = np.array([0] + pump_times) * pumping_rate + empty_vial_weight  # these are in grams
@@ -270,10 +262,9 @@ def calibrate_weight_sensors(
     np.savetxt(CALI_PATH + filename, fit_parameters)
 
     # make figure showing calibration
-    # Q: Also show fit?
     plt.figure()
     plt.plot(weights, voltages, ".-")
-    plt.xlabel("OD standard [a.u.]")
+    plt.xlabel("Weight [g]")
     plt.ylabel("Voltage [V]")
     plt.show()
 
@@ -326,13 +317,13 @@ if __name__ == "__main__":
     interface = Interface()
     choice = input("What would you like to calibrate ? [OD, pumps, waste, WS, concatenate]: ")
     if choice == "OD":
-        calibrate_OD(interface, "OD.txt", nb_standards=5, vials=[1, 2])
+        calibrate_OD(interface, "OD.txt", nb_standards=5, vials=list(range(1, 16)))
     elif choice == "pumps":
         calibrate_pumps(interface, "pumps.txt", list(range(1, 16)))
     elif choice == "waste":
         calibrate_waste_pump(interface, "waste_pump.txt")
     elif choice == "WS":
-        calibrate_weight_sensors(interface, "WS.txt", vials=[1, 2])
+        calibrate_weight_sensors(interface, "WS.txt", vials=list(range(1, 16)))
     elif choice == "concatenate":
         # This takes the time given by the RPi, which desyncs when it is turned off.
         # One can update it via the consol by typing (american format, months first): sudo date -s "06/07/2023 11:46"

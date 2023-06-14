@@ -87,7 +87,7 @@ class Morbidostat:
         volumes_added = []
         for culture in range(len(self.cultures)):
             volumes_added.append(self.maintain_culture(culture, target_OD, verbose))
-        self.interface.run_pumps()
+        self.interface.execute_pumping()
         return volumes_added
 
     def maintain_culture(self, culture_idx, target_OD: float = 0.5, verbose: bool = False) -> float:
@@ -149,7 +149,7 @@ class Morbidostat:
             weight = self.interface.measure_weight(1)
             print(f"Current weight is {weight}, removing more")
             self.inject_bacteria(1, volumes[0] / 10, verbose=True)
-            self.interface.run_pumps()
+            self.interface.execute_pumping()
         self.interface.wait_mixing(10)
 
         self.record_weights()

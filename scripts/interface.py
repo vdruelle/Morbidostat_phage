@@ -47,7 +47,7 @@ class Interface:
 
         # Loading calibration, it's a dict with the same format as the .yaml calibration file
         self.calibration = None
-        self.load_calibration("06-07-11h-47min.yaml")
+        self.load_calibration("06-14-15h-28min.yaml")
         self.turn_off()
 
     # Destructor of the interface. Gets called when the interface object is deleted, used to reset setup.
@@ -157,22 +157,35 @@ class Interface:
 
         Args:
             vial: vial number.
-            lag: delay between measures (in seconds). Defaults to 0.01.
-            nb_measures: number of measures. Defaults to 1.
+            lag: delay between measures (in seconds). Defaults to 0.02.
+            nb_measures: number of measures. Defaults to 10.
 
         Returns:
-            Mean of the measured ODs.
+            Measured OD.
         """
 
+        return self._voltage_to_OD(vial, self.measure_OD_voltage(vial, lag, nb_measures))
+
+    def measure_OD_voltage(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
+        """Measures voltage from phototransistor corresponding to the vial.
+
+        Args:
+            vial: vial number.
+            lag: delay between measures (in seconds). Defaults to 0.02.
+            nb_measures: number of measures. Defaults to 10.
+
+        Returns:
+            Mean voltage from the phototransistor.
+        """
         IOPi, pin = self._OD_to_pin(vial)
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [self._voltage_to_OD(vial, self._measure_voltage(IOPi, pin))]
+            values += [self._measure_voltage(IOPi, pin)]
         return np.mean(values)
 
     def inject_volume(
-        self, pump: int, volume: float, max_volume: float = 10, run=False, verbose=False
+        self, pump: int, volume: float, max_volume: float = 10, run: bool = False, verbose: bool = False
     ) -> None:
         """Queue the inject of the pump for the given volume in mL.
 
@@ -180,30 +193,47 @@ class Interface:
             pump: pump number
             volume: volume (in mL)
             run: Whether to queue the pumping (asynchronous) or to run it directly (sequential). Defaults to False.
+            verbose: whether to print actions or not. Defaults to False.
         """
-        # TODO: Need to discuss how to do better for long term use
+        if volume > max_volume:
+            print(
+                f"""Volume to inject {volume}mL is superior to max volume allowed at once {max_volume}. 
+                  Injecting {max_volume} instead."""
+            )
         dt = self._volume_to_time(pump, min(volume, max_volume))
+        self.run_pump(pump, dt, run, verbose)
+
+    def run_pump(self, pump: int, dt: float, run: bool = True, verbose: bool = True) -> None:
+        """Queue the run of the pump for the given amount of time dt (in seconds).
+
+        Args:
+            pump: pump number
+            dt: time (in seconds)
+            run: Whether to queue the pumping (asynchronous) or to run it directly (sequential). Defaults to True.
+        """
         self._add_pumping(pump, dt, verbose)
         if run == True:
-            self.run_pumps()
+            self.execute_pumping()
 
-    def run_pumps(self) -> None:
+    def run_all_pumps(self, dt: float, run: bool = True) -> None:
+        """Runs all the pumps at once for the given amount of time.
+
+        Args:
+            dt: time (in seconds) of pumping.
+            run:Whether to queue the pumping (asynchronous) or to run it directly (sequential). Defaults to True.
+        """
+        for pump in range(1, len(self.pumps) + 1):
+            self.run_pump(pump, dt, False)
+        if run:
+            self.execute_pumping()
+
+    def execute_pumping(self) -> None:
         """Executes all the tasks in the asynchronous tasks list and wait for them to finish."""
         loop = asyncio.get_event_loop()
         loop.run_until_complete(asyncio.gather(*self.asynctasks))
         self.asynctasks = []
 
-    def run_all_pumps(self, dt: float) -> None:
-        """Runs all the pumps at once for the given amount of time.
-
-        Args:
-            dt: time (in seconds) of pumping.
-        """
-        for pump in range(1, len(self.pumps) + 1):
-            self._add_pumping(pump, dt)
-        self.run_pumps()
-
-    def measure_weight(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> None:
+    def measure_weight(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
         """Measures the mean weight (in grams) over nb_measures from given vial.
 
         Args:
@@ -212,14 +242,27 @@ class Interface:
             nb_measures: number of measures. Defaults to 10.
 
         Returns:
-            Mean of the measured weights.
+            Measured weight.
         """
 
+        return self._voltage_to_weight(vial, self.measure_WS_voltage(vial, lag, nb_measures))
+
+    def measure_WS_voltage(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
+        """Measures the mean voltage from the weight sensors corresponding to the vial over nb_measures.
+
+        Args:
+            vial: vial number
+            lag: delay between measures (in seconds). Defaults to 0.02.
+            nb_measures: number of measures. Defaults to 10.
+
+        Returns:
+            Mean voltage from the weight sensor.
+        """
         IOPi, pin = self._WS_to_pin(vial)
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [self._voltage_to_weight(vial, self._measure_voltage(IOPi, pin))]
+            values += [self._measure_voltage(IOPi, pin)]
         return np.mean(values)
 
     def remove_waste(self, volume: float, verbose=False) -> None:
@@ -227,16 +270,37 @@ class Interface:
 
         Args:
             volume: volume (in mL).
+            verbose: whether to print actions or not. Defaults to False.
         """
-        if verbose:
-            print(f"Removing {round(volume,1)}mL via waste pump.")
         if volume > 0:
+            if verbose:
+                print(f"Removing {round(volume,1)}mL via waste pump.")
+
+            dt = volume / self.calibration["waste_pump"]["rate"]["value"]
+            self.run_waste_pump(dt, False)
+
+            if verbose:
+                print("Finished running waste pump.")
+        else:
+            print(f"Not running waste pump as {volume} is a negative volume.")
+
+    def run_waste_pump(self, dt, verbose=True) -> None:
+        """Runs the waste pump for the given amount of time.
+
+        Args:
+            dt: time to run, in seconds.
+            verbose: Verbosity. Defaults to True.
+        """
+        if dt > 0:
+            if verbose:
+                print(f"Running waste pump for {dt} seconds.")
+
             self.switch_waste_pump(True)
-            # TODO: this needs the calibration too
-            time.sleep(volume / 0.1)
+            time.sleep(dt)
             self.switch_waste_pump(False)
-        if verbose:
-            print("Finished running waste pump.")
+
+            if verbose:
+                print(f"Finished running waste pump.")
 
     def wait_mixing(self, dt: float, verbose=False):
         """Wait mixing for a given amount of time.
@@ -338,7 +402,7 @@ class Interface:
 
     def _add_pumping(self, pump: int, dt: float, verbose: bool = False) -> None:
         """Add a pumping task to the async tasks list. Used for all pumps except waste pump.
-        One must call run_pumps() to execute these tasks.
+        One must call execute_pumping() to execute these tasks.
 
         Args:
             pump: pump number.
