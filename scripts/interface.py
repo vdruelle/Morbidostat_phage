@@ -177,6 +177,9 @@ class Interface:
         Returns:
             Mean voltage from the phototransistor.
         """
+        assert lag >= 0, f"Lag value {lag} is negative."
+        assert nb_measures >= 1, f"Nb of measures {nb_measures} is not suitable."
+
         IOPi, pin = self._OD_to_pin(vial)
         values = []
         for ii in range(nb_measures):
@@ -195,6 +198,8 @@ class Interface:
             run: Whether to queue the pumping (asynchronous) or to run it directly (sequential). Defaults to False.
             verbose: whether to print actions or not. Defaults to False.
         """
+        assert volume >= 0, f"Cannot inject volume {volume}."
+
         if volume > max_volume:
             print(
                 f"""Volume to inject {volume}mL is superior to max volume allowed at once {max_volume}. 
@@ -211,9 +216,12 @@ class Interface:
             dt: time (in seconds)
             run: Whether to queue the pumping (asynchronous) or to run it directly (sequential). Defaults to True.
         """
-        self._add_pumping(pump, dt, verbose)
-        if run == True:
-            self.execute_pumping()
+        assert dt >= 0, f"Cannot run pump for amount of time {dt}."
+
+        if dt > 0:
+            self._add_pumping(pump, dt, verbose)
+            if run == True:
+                self.execute_pumping()
 
     def run_all_pumps(self, dt: float, run: bool = True) -> None:
         """Runs all the pumps at once for the given amount of time.
@@ -258,6 +266,9 @@ class Interface:
         Returns:
             Mean voltage from the weight sensor.
         """
+        assert lag >= 0, f"Lag value {lag} is negative."
+        assert nb_measures >= 1, f"Nb of measures {nb_measures} is not suitable."
+
         IOPi, pin = self._WS_to_pin(vial)
         values = []
         for ii in range(nb_measures):
@@ -272,17 +283,16 @@ class Interface:
             volume: volume (in mL).
             verbose: whether to print actions or not. Defaults to False.
         """
-        if volume > 0:
-            if verbose:
-                print(f"Removing {round(volume,1)}mL via waste pump.")
+        assert volume >= 0, f"Cannot remove volume {volume}."
 
-            dt = volume / self.calibration["waste_pump"]["rate"]["value"]
-            self.run_waste_pump(dt, False)
+        if verbose:
+            print(f"Removing {round(volume,1)}mL via waste pump.")
 
-            if verbose:
-                print("Finished running waste pump.")
-        else:
-            print(f"Not running waste pump as {volume} is a negative volume.")
+        dt = volume / self.calibration["waste_pump"]["rate"]["value"]
+        self.run_waste_pump(dt, False)
+
+        if verbose:
+            print("Finished running waste pump.")
 
     def run_waste_pump(self, dt, verbose=True) -> None:
         """Runs the waste pump for the given amount of time.
@@ -291,16 +301,18 @@ class Interface:
             dt: time to run, in seconds.
             verbose: Verbosity. Defaults to True.
         """
-        if dt > 0:
-            if verbose:
-                print(f"Running waste pump for {dt} seconds.")
+        assert dt >= 0, f"Cannot run waste pump for time {dt}."
 
+        if verbose:
+            print(f"Running waste pump for {dt} seconds.")
+
+        if dt > 0:
             self.switch_waste_pump(True)
             time.sleep(dt)
             self.switch_waste_pump(False)
 
-            if verbose:
-                print(f"Finished running waste pump.")
+        if verbose:
+            print(f"Finished running waste pump.")
 
     def wait_mixing(self, dt: float, verbose=False):
         """Wait mixing for a given amount of time.
@@ -308,9 +320,12 @@ class Interface:
         Args:
             dt: time (in seconds).
         """
+        assert dt >= 0, f"Cannot wait for time {dt}."
+
         if verbose:
             print(f"Waiting {dt}s for mixing.")
-        time.sleep(dt)
+        if dt > 0:
+            time.sleep(dt)
 
     def switch_light(self, state: bool) -> None:
         """Turns lights to the given state. True is on, False is off.
@@ -358,8 +373,10 @@ class Interface:
         Returns:
             t: time (in seconds) to pump the given volume.
         """
-        available_pumps = list(range(1, len(self.pumps) + 1))
-        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
+        assert volume >= 0, f"Volume {volume} is not valid."
+        assert (
+            pump in self.available_pumps()
+        ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
 
         t = volume / self.calibration["pumps"][f"pump {pump}"]["rate"]["value"]
         return t
@@ -375,6 +392,9 @@ class Interface:
             OD: OD600 corresponding to the voltage measured for the given vial.
         """
         assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
+
+        if voltage <= 0:
+            print(f"Got OD voltage {voltage}, which is negative.")
 
         slope = self.calibration["OD"][f"vial {vial}"]["slope"]["value"]
         intercept = self.calibration["OD"][f"vial {vial}"]["intercept"]["value"]
@@ -394,6 +414,9 @@ class Interface:
         """
         assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
+        if voltage <= 0:
+            print(f"Got weight voltage {voltage}, which is negative.")
+
         slope = self.calibration["WS"][f"vial {vial}"]["slope"]["value"]
         intercept = self.calibration["WS"][f"vial {vial}"]["intercept"]["value"]
         weight = (voltage - intercept) / slope
@@ -409,7 +432,7 @@ class Interface:
             dt: duration in seconds.
         """
 
-        async def _pump_coroutine(self, pump: int, dt: float) -> None:
+        async def _pump_coroutine(self, pump: int, dt: float, verbose: bool) -> None:
             IOPi, pin = self._pump_to_pin(pump)
             self.iobuses[IOPi - 1].write_pin(pin, 1)
             if verbose:
@@ -419,7 +442,8 @@ class Interface:
             if verbose:
                 print(f"Pump {pump} finished after {round(dt,2)} seconds.")
 
-        self.asynctasks.append(asyncio.ensure_future(_pump_coroutine(self, pump, dt)))
+        assert dt > 0, f"Cannot pump for a negative amount of time {dt}"
+        self.asynctasks.append(asyncio.ensure_future(_pump_coroutine(self, pump, dt, verbose)))
 
     # --- Low level functions ---
 
@@ -434,8 +458,9 @@ class Interface:
                     IOPi: IOPi number (first IOPi means self.iobuses[0])
                     pin: physical pin on the IOPi
         """
-        available_pumps = list(range(1, len(self.pumps) + 1))
-        assert pump in available_pumps, f"Pump {pump} is not in the available pumps {available_pumps}"
+        assert (
+            pump in self.available_pumps()
+        ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
 
         return self.pumps[pump - 1]["IOPi"], self.pumps[pump - 1]["pin"]
 
@@ -489,6 +514,10 @@ class Interface:
         assert adc_pin in list(range(1, 9)), f"ADC pin {adc_pin} isn't in available pins {list(range(1,9))}"
 
         return self.adcs[adcpi - 1].read_voltage(adc_pin)
+
+    def _available_pumps(self) -> list(int):
+        "Returns the list of available pumps"
+        return list(range(1, len(self.pumps) + 1))
 
 
 if __name__ == "__main__":
