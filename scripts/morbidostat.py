@@ -4,7 +4,10 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from interface import Interface
+
+RUN_DIRECTORY = "runs/"
 
 
 class Morbidostat:
@@ -22,11 +25,16 @@ class Morbidostat:
 
         self.experiment_start = time.time()
 
-        self.ODs = np.zeros(len(self.cultures) + len(self.phage_vials))
-        self.ODtimes = [0]
+        columns = (
+            ["time"]
+            + [f"culture {ii}" for ii in range(1, len(self.cultures) + 1)]
+            + [f"phage_vial {ii}" for ii in range(1, len(self.phage_vials) + 1)]
+        )
+        self.ODs = pd.DataFrame(columns=columns)
+        self.weights = pd.DataFrame(columns=columns)
 
-        self.weights = np.zeros(len(self.cultures) + len(self.phage_vials))
-        self.weighttimes = [0]
+        self.OD_savefile = RUN_DIRECTORY + "ODs.tsv"
+        self.weights_savefile = RUN_DIRECTORY + "weights.tsv"
 
     def set_pumps(self):
         def create_pump(number, input_type: str, input_number: int, output_type: str, output_number: int):
@@ -63,8 +71,7 @@ class Morbidostat:
         for vial in self.cultures + self.phage_vials:
             ODs += [self.interface.measure_OD(vial)]
 
-        self.ODs = np.vstack([self.ODs, ODs])
-        self.ODtimes.append(self.experiment_time())
+        self.ODs.loc[len(self.ODs)] = [self.experiment_time()] + ODs
 
     def record_weights(self) -> None:
         """Measures weights of all vials and store these values along with the appropriate experiment time."""
@@ -72,8 +79,12 @@ class Morbidostat:
         for vial in self.cultures + self.phage_vials:
             weights += [self.interface.measure_weight(vial)]
 
-        self.weights = np.vstack([self.weights, weights])
-        self.weighttimes.append(self.experiment_time())
+        self.weights.loc[len(self.ODs)] = [self.experiment_time()] + weights
+
+    def save_data(self) -> None:
+        """Saves OD and weights data to file."""
+        self.ODs.to_csv(self.OD_savefile, sep="\t", index=False)
+        self.weights.to_csv(self.weights_savefile, sep="\t", index=False)
 
     def maintain_cultures(self, target_OD: float = 0.5, verbose: bool = False) -> list:
         """Maintain all cultures at the target OD.
@@ -154,7 +165,7 @@ class Morbidostat:
 
         self.record_weights()
         self.record_ODs()
-        self.interface.remove_waste(max(volumes) * safety_factor * safety_factor, verbose=True)
+        self.interface.remove_waste(max(volumes) * safety_factor, verbose=True)
         self.record_weights()
 
     def run(self, cycle_time=60, tot_time=3600) -> None:
@@ -180,7 +191,7 @@ class Morbidostat:
 
 if __name__ == "__main__":
     morb = Morbidostat()
-    morb.interface.switch_light(True)
-    time.sleep(100)
+    # morb.interface.switch_light(True)
+    # time.sleep(100)
     # morb.run()
     # morb.interface.switch_light(False)

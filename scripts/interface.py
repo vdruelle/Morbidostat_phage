@@ -459,7 +459,7 @@ class Interface:
                     pin: physical pin on the IOPi
         """
         assert (
-            pump in self.available_pumps()
+            pump in self._available_pumps()
         ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
 
         return self.pumps[pump - 1]["IOPi"], self.pumps[pump - 1]["pin"]
@@ -515,7 +515,7 @@ class Interface:
 
         return self.adcs[adcpi - 1].read_voltage(adc_pin)
 
-    def _available_pumps(self) -> list(int):
+    def _available_pumps(self) -> list[int]:
         "Returns the list of available pumps"
         return list(range(1, len(self.pumps) + 1))
 
