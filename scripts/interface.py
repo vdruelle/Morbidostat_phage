@@ -202,7 +202,7 @@ class Interface:
 
         if volume > max_volume:
             print(
-                f"""Volume to inject {volume}mL is superior to max volume allowed at once {max_volume}. 
+                f"""Volume to inject {round(volume,2)}mL is superior to max volume allowed at once {max_volume}. 
                   Injecting {max_volume} instead."""
             )
         dt = self._volume_to_time(pump, min(volume, max_volume))
@@ -375,7 +375,7 @@ class Interface:
         """
         assert volume >= 0, f"Volume {volume} is not valid."
         assert (
-            pump in self.available_pumps()
+            pump in self._available_pumps()
         ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
 
         t = volume / self.calibration["pumps"][f"pump {pump}"]["rate"]["value"]

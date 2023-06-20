@@ -18,14 +18,14 @@ class Morbidostat:
 
         # Vial of the cultures, as defined in Interface class
         self.cultures = [
-            5,
-            6,
-            15,
             4,
             7,
             14,
+            3,
+            8,
+            13,
         ]  # Bacterial cultures, first 3 are BW25113, last 3 are wbbl+ variant
-        self.phage_vials = [2, 9, 12]  # Experiment vials (with phages)
+        self.phage_vials = [1, 10, 11]  # Experiment vials (with phages)
         self.vial_volume = 20  # In milliliters
         self.pumps = []
         self.set_pumps()
@@ -80,12 +80,12 @@ class Morbidostat:
 
         # Pumps from BW25113 to phages
         self.pumps += [create_pump(7, "culture", 1, "phage vial", 1)]
-        self.pumps += [create_pump(8, "culture", 2, "phage vial", 2)]
-        self.pumps += [create_pump(9, "culture", 3, "phage vial", 3)]
+        self.pumps += [create_pump(9, "culture", 2, "phage vial", 2)]
+        self.pumps += [create_pump(11, "culture", 3, "phage vial", 3)]
 
         # Pumps from wbbl(+) variant to phages
-        self.pumps += [create_pump(10, "culture", 4, "phage vial", 1)]
-        self.pumps += [create_pump(11, "culture", 5, "phage vial", 2)]
+        self.pumps += [create_pump(8, "culture", 4, "phage vial", 1)]
+        self.pumps += [create_pump(10, "culture", 5, "phage vial", 2)]
         self.pumps += [create_pump(12, "culture", 6, "phage vial", 3)]
 
     def get_pump_number(
@@ -111,7 +111,7 @@ class Morbidostat:
 
         assert (
             len(pump) == 1
-        ), f"Found more than one pump for the input {input_type} {input_number} and output {output_type} {output_number}"
+        ), f"Found no / more than one pump for the input {input_type} {input_number} and output {output_type} {output_number}"
 
         return pump[0]["number"]
 
@@ -154,7 +154,7 @@ class Morbidostat:
             list of media volumes added to the cultures.
         """
         volumes_added = []
-        for culture in range(len(self.cultures)):
+        for culture in range(1, len(self.cultures) + 1):
             volumes_added.append(self.maintain_culture(culture, target_OD, verbose))
         self.interface.execute_pumping()
         return volumes_added
@@ -242,6 +242,7 @@ class Morbidostat:
 
         min_vol = min(volumes)
         self.feed_phages(min_vol, tot_time, 0.8, 0.8, verbose=True)
+        self.interface.wait_mixing(10)
         self.record_weights()
         self.record_ODs()
 
@@ -249,13 +250,16 @@ class Morbidostat:
         self.record_ODs()
         self.record_weights()
 
-    def run(self, cycle_time: int = 60, tot_time: int = 3600) -> None:
+    def run(self, cycle_time: int = 300, tot_time: int = 8 * 3600) -> None:
+        self.interface.switch_light(True)
+        time.sleep(100)
         while self.experiment_time() < tot_time:
-            print(f"\nExperiment time: {round(self.experiment_time(),1)}s")
-            self.cycle()
+            print(f"\n--- Experiment time: {round(self.experiment_time(),1)}s ---")
+            self.cycle(tot_time)
             self.save_data()
             time.sleep(cycle_time)
         print("\nExperiment is finished !")
+        self.interface.switch_light(False)
 
     def plots(self) -> None:
         plt.figure()
@@ -273,7 +277,4 @@ class Morbidostat:
 
 if __name__ == "__main__":
     morb = Morbidostat()
-    # morb.interface.switch_light(True)
-    # time.sleep(100)
-    # morb.run()
-    # morb.interface.switch_light(False)
+    morb.run()
