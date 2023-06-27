@@ -68,7 +68,7 @@ class Morbidostat:
 
         # Pumps from wbbl(+) variant to phages
         self.pumps += [create_pump(6, "culture", 1, "phage vial", 1)]
-        self.pumps += [create_pump(7, "culture", 2, "phage vial", 2)]
+        self.pumps += [create_pump(5, "culture", 2, "phage vial", 2)]
         self.pumps += [create_pump(8, "culture", 3, "phage vial", 3)]
 
     def get_pump_number(
@@ -120,7 +120,7 @@ class Morbidostat:
         for vial in self.cultures + self.phage_vials:
             weights += [self.interface.measure_WS_voltage(vial)]
 
-        self.weights.loc[len(self.ODs)] = [self.experiment_time()] + weights
+        self.weights.loc[len(self.weights)] = [self.experiment_time()] + weights
 
     def save_data(self) -> None:
         """Saves OD and weight data to file."""
@@ -235,6 +235,7 @@ class Morbidostat:
         self.record_ODs()
 
         self.interface.remove_waste(max(volumes) * safety_factor, verbose=True)
+        self.interface.wait_mixing(10)
         self.record_ODs()
         self.record_weights()
 
@@ -269,9 +270,32 @@ class Morbidostat:
         self.interface.wait_mixing(10)
 
         # Removing waste
-        self.interface.remove_waste(volume * safety_factor)
+        self.interface.remove_waste(volume * safety_factor, verbose)
+
+    def empty_cultures(self, verbose: bool = True):
+        """Empty most the culture vials. They are the only ones that can be emptied since the other ones don't
+        have a needle that goes to the bottom. This leaves osme liquid in so that the pumps still work.
+
+        Args:
+            verbose: Defaults to True.
+        """
+        print()
+        print("Emptying of the cultures vials in 3 steps")
+        for ii in range(3):
+            self.feed_phages([5, 5, 5], verbose=verbose)
+            self.interface.wait_mixing(10)
+            self.interface.remove_waste(10, verbose)
+        print("Done emptying the culture vials")
+        print()
 
     def cleaning_sequence(self, nb_cycle: int = 3, volume_cycle: float = 10, wait_time: float = 60):
+        """Performs the cleaning sequence for one input (bleach, citric acid or miliQ water)
+
+        Args:
+            nb_cycle: Number of cycles to run. Defaults to 3.
+            volume_cycle: Volume used per cycle per vial. Defaults to 10.
+            wait_time: Waiting time between cycles (in seconds). Defaults to 60.
+        """
         print()
         print(f"--- Starting cleaning sequence with {nb_cycle} time {volume_cycle}mL ---")
         print()
@@ -282,6 +306,7 @@ class Morbidostat:
             print(f"Waiting for {wait_time} seconds.")
             time.sleep(wait_time)
 
+        self.empty_cultures(True)
         print()
         print("--- Finished cleaning sequence ! ---")
 
