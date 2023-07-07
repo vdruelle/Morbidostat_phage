@@ -6,7 +6,7 @@ def plot_ODs(filename):
     df = pd.read_csv(filename, sep="\t")
 
     plt.figure()
-    for ii in range(1, 10):
+    for ii in range(1, 7):
         column = df.columns[ii]
         plt.plot(df["time"], df[column], label=column)
     plt.xlabel("Time [s]")
@@ -19,7 +19,7 @@ def plot_weights(filename):
     df = pd.read_csv(filename, sep="\t")
 
     plt.figure()
-    for ii in range(1, 10):
+    for ii in range(1, 7):
         column = df.columns[ii]
         plt.plot(df["time"], df[column], label=column)
     plt.xlabel("Time [s]")

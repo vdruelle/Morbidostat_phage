@@ -239,7 +239,7 @@ class Morbidostat:
         self.record_ODs()
         self.record_weights()
 
-    def run(self, cycle_time: int = 300, tot_time: int = 72 * 3600) -> None:
+    def run(self, cycle_time: int = 300, tot_time: int = 96 * 3600) -> None:
         self.interface.switch_light(True)
         time.sleep(100)
         while self.experiment_time() < tot_time:
