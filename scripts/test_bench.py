@@ -30,6 +30,8 @@ class Interface:
         self.lights = None
         # This is the pin number (on the RPi, not on the IOPi) for the waste pump
         self.waste_pump = None
+        # This is the pin number (on the RPi, not on the IOPi) for the waste pump
+        self.waste_pump_direction = None
         # list of integers for the vials (usally 1 to 15 included)
         self.vials = []
 
@@ -71,13 +73,14 @@ class Interface:
         for iobus in self.iobuses:
             for ii in range(1, 17):
                 iobus.set_pin_direction(ii, 0)
+                iobus.write_pin(ii, 0)
 
         # Setting up vials0
         self.vials = list(range(1, 3))
 
         # Setting up lights and waste pump (controlled by the RPi directly)
-        self.lights = 20  # Pin 20
-        self.waste_pump = 21  # Pin 21
+        self.lights = 21  # Pin 20
+        self.waste_pump = 20  # Pin 21
         self.waste_pump_direction = 16  # Pin 16, reverses the rotation of the pump when on
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.lights, GPIO.OUT)
@@ -88,16 +91,16 @@ class Interface:
         GPIO.output(self.waste_pump_direction, GPIO.LOW)
 
         # Setting up pumps and measurements
-        for ii in range(1, 5):
+        for ii in range(1, 6):
             self.pumps += [{"IOPi": 1, "pin": ii}]
         for ii in range(1, 3):
             self.ODs += [{"ADCPi": 1, "pin": ii}]
 
         # Vial 1 is pin 4 on ADCPi 1
         ADC_pos = [
-            (1, 4),
-            (1, 5),
-            (1, 6),
+            (1, 1),
+            (1, 2),
+            (1, 3),
         ]
         for pos in ADC_pos:
             self.weight_sensors += [{"ADCPi": pos[0], "pin": pos[1]}]
@@ -271,22 +274,27 @@ class Interface:
         if verbose:
             print("Finished running waste pump.")
 
-    def run_waste_pump(self, dt, verbose=True) -> None:
+    def run_waste_pump(self, dt, reversed: bool = False, verbose=True) -> None:
         """Runs the waste pump for the given amount of time.
 
         Args:
             dt: time to run, in seconds.
+            reversed: whether to run the pump in reverse or not. Defaults to False.
             verbose: Verbosity. Defaults to True.
         """
         assert dt >= 0, f"Cannot run waste pump for time {dt}."
 
-        if verbose:
+        if verbose and not reversed:
             print(f"Running waste pump for {dt} seconds.")
+        elif verbose and reversed:
+            print(f"Running waste pump in reverse for {dt} seconds.")
 
         if dt > 0:
+            self.switch_waste_pump_direction(reversed)
             self.switch_waste_pump(True)
             time.sleep(dt)
             self.switch_waste_pump(False)
+            self.switch_waste_pump_direction(False)
 
         if verbose:
             print(f"Finished running waste pump.")
@@ -330,6 +338,19 @@ class Interface:
         else:
             GPIO.output(self.waste_pump, GPIO.LOW)
 
+    def switch_waste_pump_direction(self, state: bool) -> None:
+        """Turns the direction of the waste pump to the given state. False is default rotation.
+
+        Args:
+            state: False is default rotation, True is the reversed rotation.
+        """
+        assert state in [True, False], f"State {state} is not valid"
+
+        if state:
+            GPIO.output(self.waste_pump_direction, GPIO.HIGH)
+        else:
+            GPIO.output(self.waste_pump_direction, GPIO.LOW)
+
     def turn_off(self) -> None:
         """Turns everything controlled by the interface to off state."""
         for pump in range(1, len(self.pumps) + 1):
@@ -337,6 +358,7 @@ class Interface:
             self.iobuses[IOPi - 1].write_pin(pin, 0)
         self.switch_light(False)
         self.switch_waste_pump(False)
+        self.switch_waste_pump_direction(True)
 
     # --- Medium level functions ---
 
@@ -353,7 +375,7 @@ class Interface:
         assert volume >= 0, f"Volume {volume} is not valid."
         assert (
             pump in self._available_pumps()
-        ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
+        ), f"Pump {pump} is not in the available pumps {self._available_pumps()}"
 
         t = volume / self.calibration["pumps"][f"pump {pump}"]["rate"]["value"]
         return t
@@ -437,7 +459,7 @@ class Interface:
         """
         assert (
             pump in self._available_pumps()
-        ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
+        ), f"Pump {pump} is not in the available pumps {self._available_pumps()}"
 
         return self.pumps[pump - 1]["IOPi"], self.pumps[pump - 1]["pin"]
 
