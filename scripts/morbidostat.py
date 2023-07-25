@@ -64,11 +64,11 @@ class Morbidostat:
         # Pumps from LB to wbbl(+) cultures
         self.pumps += [create_pump(1, "media", 1, "culture", 1)]
         self.pumps += [create_pump(2, "media", 1, "culture", 2)]
-        self.pumps += [create_pump(3, "media", 1, "culture", 3)]
+        self.pumps += [create_pump(4, "media", 1, "culture", 3)]
 
         # Pumps from wbbl(+) variant to phages
         self.pumps += [create_pump(6, "culture", 1, "phage vial", 1)]
-        self.pumps += [create_pump(5, "culture", 2, "phage vial", 2)]
+        self.pumps += [create_pump(7, "culture", 2, "phage vial", 2)]
         self.pumps += [create_pump(8, "culture", 3, "phage vial", 3)]
 
     def get_pump_number(
@@ -181,40 +181,21 @@ class Morbidostat:
             )
         self.interface.inject_volume(pump_number, volume, verbose=verbose)
 
-    # def feed_phages(
-    #     self, volume: float, tot_time: int, WT_frac_start: float, WT_stop_progress: float, verbose=False
-    # ) -> None:
-    #     "Perform bacterial mix injection."
-    #     progress = self.experiment_time() / tot_time
+    def feed_phages(self, volume: list[float], safety_factor: float = 0.8, verbose: bool = False):
+        """
+        Feeds the phages by injecting bacteria with the given volume.
 
-    #     if progress > WT_stop_progress:
-    #         if verbose:
-    #             print(f"Progress is {round(progress*100,1)}%, injecting {volume} wbbl(+)")
-    #         self.inject_bacteria(4, 1, volume, verbose)
-    #         self.inject_bacteria(5, 2, volume, verbose)
-    #         self.inject_bacteria(6, 3, volume, verbose)
-    #     else:
-    #         vol_WT = volume * WT_frac_start * (1 - progress / WT_stop_progress)
-    #         vol_wbbl = volume - vol_WT
-    #         if verbose:
-    #             print(
-    #                 f"Progress is {round(progress*100,1)}%, injecting {vol_WT} BW25113 and {vol_wbbl} wbbl(+)"
-    #             )
-
-    #         self.inject_bacteria(1, 1, vol_WT, verbose)
-    #         self.inject_bacteria(2, 2, vol_WT, verbose)
-    #         self.inject_bacteria(3, 3, vol_WT, verbose)
-    #         self.inject_bacteria(4, 1, vol_wbbl, verbose)
-    #         self.inject_bacteria(5, 2, vol_wbbl, verbose)
-    #         self.inject_bacteria(6, 3, vol_wbbl, verbose)
-
-    def feed_phages(self, volume: list[float], verbose: bool = False):
-        self.inject_bacteria(1, 1, volume[0], verbose)
-        self.inject_bacteria(2, 2, volume[1], verbose)
-        self.inject_bacteria(3, 3, volume[2], verbose)
+        Parameters:
+            volume: A list of three floats representing the volume of bacteria to be injected for each phage.
+            safety_factor: This controls how is transfered from the culture to the phage vials. Defaults to 0.8.
+            verbose: Whether to print detailed information during the injection process. Defaults to False.
+        """
+        self.inject_bacteria(1, 1, volume[0] * safety_factor, verbose)
+        self.inject_bacteria(2, 2, volume[1] * safety_factor, verbose)
+        self.inject_bacteria(3, 3, volume[2] * safety_factor, verbose)
         self.interface.execute_pumping()
 
-    def cycle(self, tot_time: int, safety_factor: float = 2) -> None:
+    def cycle(self, safety_factor: float = 2) -> None:
         """Runs a cycle of the experiment.
 
         Args:
@@ -223,7 +204,7 @@ class Morbidostat:
         self.record_ODs()
         self.record_weights()
 
-        volumes = self.maintain_cultures(0.4, verbose=True)
+        volumes = self.maintain_cultures(0.3, verbose=True)
         self.interface.wait_mixing(10)
 
         self.record_weights()
@@ -239,12 +220,15 @@ class Morbidostat:
         self.record_ODs()
         self.record_weights()
 
-    def run(self, cycle_time: int = 300, tot_time: int = 96 * 3600) -> None:
+    def run(self, cycle_time: int = 300, tot_time: int = 7 * 24 * 3600) -> None:
+        print("Starting experiment...")
         self.interface.switch_light(True)
         time.sleep(100)
         while self.experiment_time() < tot_time:
-            print(f"\n--- Experiment time: {round(self.experiment_time(),1)}s ---")
-            self.cycle(tot_time)
+            print(
+                f"\n--- Experiment time: {round(self.experiment_time(),1)}s, Progress: {(round(self.experiment_time() / tot_time,3))*100}% ---"
+            )
+            self.cycle()
             self.save_data()
             time.sleep(cycle_time)
         print("\nExperiment is finished !")
@@ -266,7 +250,7 @@ class Morbidostat:
         self.interface.wait_mixing(10)
 
         # Taking half of that volume to phage vials
-        self.feed_phages([volume / 2, volume / 2, volume / 2], verbose=verbose)
+        self.feed_phages([0.75 * volume, 0.75 * volume, 0.75 * volume], verbose=verbose)
         self.interface.wait_mixing(10)
 
         # Removing waste
@@ -287,6 +271,21 @@ class Morbidostat:
             self.interface.remove_waste(10, verbose)
         print("Done emptying the culture vials")
         print()
+
+    def fill_cultures(self, verbose: bool = True):
+        """Fill most the culture vials. This is used to replace the sterile water with LB at the beginning
+        of the experiment."""
+        volume = 10
+        safety_factor = 2
+        print()
+        print("Filling of the cultures vials in 5 steps")
+        for ii in range(5):
+            for culture in range(1, len(self.cultures) + 1):
+                media_pump_number = self.get_pump_number("media", 1, "culture", culture)
+                self.interface.inject_volume(media_pump_number, volume, verbose=verbose)
+            self.interface.execute_pumping()
+            self.interface.wait_mixing(10)
+            self.interface.remove_waste(volume * safety_factor, verbose)
 
     def cleaning_sequence(self, nb_cycle: int = 3, volume_cycle: float = 10, wait_time: float = 60):
         """Performs the cleaning sequence for one input (bleach, citric acid or miliQ water)
@@ -313,4 +312,4 @@ class Morbidostat:
 
 if __name__ == "__main__":
     morb = Morbidostat()
-    # morb.run()
+    morb.run()
