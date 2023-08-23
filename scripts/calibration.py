@@ -115,10 +115,10 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     print("Weight of vials before pumping has been saved.")
 
     print("\nPut inlet and outlet of all pumps in water.")
-    input("When the setup is ready press enter. It will run all the pumps for 30s to fill the tubing.")
+    input("When the setup is ready press enter. It will run all the pumps for 50s to fill the tubing.")
     tubes_filled = False
     while not tubes_filled:
-        interface.run_all_pumps(30, True)
+        interface.run_all_pumps(50, True)
         tmp = input("Are the tubes filled ? [yes/no]")
         if tmp == "yes":
             tubes_filled = True
@@ -131,7 +131,7 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
 
     print("\nNow we measure the weights of the vials again.")
     for pump_idx, pump_id in enumerate(pumps):
-        weight = input("    Weight of vial {pump_id}: ")
+        weight = input(f"    Weight of vial {pump_id}: ")
         weights[1, pump_idx] = weight
     print("Weight of vials after pumping has been saved.")
 
@@ -320,13 +320,13 @@ if __name__ == "__main__":
     interface = Interface()
     choice = input("What would you like to calibrate ? [OD, pumps, waste, WS, concatenate]: ")
     if choice == "OD":
-        calibrate_OD(interface, "OD.txt", nb_standards=5, vials=list(range(1, 16)))
+        calibrate_OD(interface, "OD.txt", nb_standards=4, vials=[4, 7, 14, 1, 10, 11])
     elif choice == "pumps":
-        calibrate_pumps(interface, "pumps.txt", list(range(1, 16)))
+        calibrate_pumps(interface, "pumps.txt", [1, 2, 4, 6, 7, 8])
     elif choice == "waste":
         calibrate_waste_pump(interface, "waste_pump.txt")
     elif choice == "WS":
-        calibrate_weight_sensors(interface, "WS.txt", vials=list(range(1, 16)))
+        calibrate_weight_sensors(interface, "WS.txt", vials=[4, 7, 14, 1, 10, 11])
     elif choice == "concatenate":
         # This takes the time given by the RPi, which desyncs when it is turned off.
         # One can update it via the consol by typing (american format, months first): sudo date -s "06/07/2023 11:46"
