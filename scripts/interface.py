@@ -1,6 +1,6 @@
 # Defines the class `interface` with all the hardware relations (which pin is what) and the default functions
-# to run the morbidostat. Eventually the low level functions will have to be taken care of with the `asyncio`
-# library.
+# to run the morbidostat. The pumping the low level functions can be taken care of with the `asyncio` library to run
+# them all at the same time.
 
 import asyncio
 import time
@@ -24,8 +24,6 @@ class Interface:
 
         # self.pumps[0] is a dictionary with the GPIOplus number and pin number to the first pump
         self.pumps = []
-        # self.weight_sensors[0] is a dictionary with the ADC number + pin number to first vial weight sensor
-        self.weight_sensors = []
         # self.ODs[1] is a dictionary with the ADC number + pin number to first vial OD
         self.ODs = []
         # This is the pin number (on the RPi, not on the IOPi) for the lights
@@ -47,7 +45,7 @@ class Interface:
 
         # Loading calibration, it's a dict with the same format as the .yaml calibration file
         self.calibration = None
-        self.load_calibration("18-07-17h-15min.yaml")
+        self.load_calibration("No_calibration.yaml")
         self.turn_off()
 
     # Destructor of the interface. Gets called when the interface object is deleted, used to reset setup.
@@ -65,8 +63,6 @@ class Interface:
         self.adcs = [
             ADCPi(0x68, 0x69, 14),
             ADCPi(0x6A, 0x6B, 14),
-            ADCPi(0x6C, 0x6D, 14),
-            ADCPi(0x6E, 0x6F, 14),
         ]
         for adc in self.adcs:
             adc.set_pga(1)
@@ -84,17 +80,20 @@ class Interface:
             for ii in range(1, 17):
                 iobus.set_pin_direction(ii, 0)
 
-        # Setting up vials0
+        # Setting up vials (left to right, back to front. Vial 1 is back left, vial 15 is front right)
         self.vials = list(range(1, 16))
 
         # Setting up lights and waste pump (controlled by the RPi directly)
-        self.lights = 20  # Pin 20
-        self.waste_pump = 21  # Pin 21
+        self.lights = 21  # Pin 21
+        self.waste_pump = 20  # Pin 20
+        self.waste_pump_direction = 16  # Pin 16, reverses the rotation of the pump when on
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.lights, GPIO.OUT)
         GPIO.output(self.lights, GPIO.LOW)
         GPIO.setup(self.waste_pump, GPIO.OUT)
         GPIO.output(self.waste_pump, GPIO.LOW)
+        GPIO.setup(self.waste_pump_direction, GPIO.OUT)
+        GPIO.output(self.waste_pump_direction, GPIO.LOW)
 
         # Setting up pumps and measurements
         for ii in range(1, 16):
@@ -103,27 +102,6 @@ class Interface:
             self.ODs += [{"ADCPi": 1, "pin": ii}]
         for ii in range(1, 8):
             self.ODs += [{"ADCPi": 2, "pin": ii}]
-
-        # Vial 1 is pin 8 on ADC3, vial 2 is pin 6 on ADC3, .... vial 15 is pin 7 on ADC4.
-        ADC_pos = [
-            (3, 8),
-            (3, 6),
-            (3, 5),
-            (3, 3),
-            (3, 2),
-            (3, 1),
-            (4, 5),
-            (3, 4),
-            (4, 2),
-            (3, 7),
-            (4, 1),
-            (4, 3),
-            (4, 4),
-            (4, 6),
-            (4, 7),
-        ]
-        for pos in ADC_pos:
-            self.weight_sensors += [{"ADCPi": pos[0], "pin": pos[1]}]
 
     def load_calibration(self, file) -> None:
         """Load the calibration file, process it and saves it in the Interface class.
@@ -138,16 +116,12 @@ class Interface:
             self.calibration = yaml.load(stream, Loader=yaml.loader.BaseLoader)
 
         # Converting values from string to floats
-        for key1 in ["OD", "WS", "pumps"]:
+        for key1 in ["OD", "pumps"]:
             for key2 in self.calibration[key1].keys():
                 for key3 in self.calibration[key1][key2].keys():
-                    self.calibration[key1][key2][key3]["value"] = float(
-                        self.calibration[key1][key2][key3]["value"]
-                    )
+                    self.calibration[key1][key2][key3]["value"] = float(self.calibration[key1][key2][key3]["value"])
 
-        self.calibration["waste_pump"]["rate"]["value"] = float(
-            self.calibration["waste_pump"]["rate"]["value"]
-        )
+        self.calibration["waste_pump"]["rate"]["value"] = float(self.calibration["waste_pump"]["rate"]["value"])
 
     # --- High level functions ---
 
@@ -180,11 +154,11 @@ class Interface:
         assert lag >= 0, f"Lag value {lag} is negative."
         assert nb_measures >= 1, f"Nb of measures {nb_measures} is not suitable."
 
-        IOPi, pin = self._OD_to_pin(vial)
+        ADCPi, pin = self._OD_to_pin(vial)
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [self._measure_voltage(IOPi, pin)]
+            values += [self._measure_voltage(ADCPi, pin)]
         return np.mean(values)
 
     def inject_volume(
@@ -294,22 +268,27 @@ class Interface:
         if verbose:
             print("Finished running waste pump.")
 
-    def run_waste_pump(self, dt, verbose=True) -> None:
+    def run_waste_pump(self, dt, reversed: bool = False, verbose=True) -> None:
         """Runs the waste pump for the given amount of time.
 
         Args:
             dt: time to run, in seconds.
+            reversed: whether to run the pump in reverse or not. Defaults to False.
             verbose: Verbosity. Defaults to True.
         """
         assert dt >= 0, f"Cannot run waste pump for time {dt}."
 
-        if verbose:
+        if verbose and not reversed:
             print(f"Running waste pump for {dt} seconds.")
+        elif verbose and reversed:
+            print(f"Running waste pump in reverse for {dt} seconds.")
 
         if dt > 0:
+            self.switch_waste_pump_direction(reversed)
             self.switch_waste_pump(True)
             time.sleep(dt)
             self.switch_waste_pump(False)
+            self.switch_waste_pump_direction(False)
 
         if verbose:
             print(f"Finished running waste pump.")
@@ -353,6 +332,19 @@ class Interface:
         else:
             GPIO.output(self.waste_pump, GPIO.LOW)
 
+    def switch_waste_pump_direction(self, state: bool) -> None:
+        """Turns the direction of the waste pump to the given state. False is default rotation.
+
+        Args:
+            state: False is default rotation, True is the reversed rotation.
+        """
+        assert state in [True, False], f"State {state} is not valid"
+
+        if state:
+            GPIO.output(self.waste_pump_direction, GPIO.HIGH)
+        else:
+            GPIO.output(self.waste_pump_direction, GPIO.LOW)
+
     def turn_off(self) -> None:
         """Turns everything controlled by the interface to off state."""
         for pump in range(1, len(self.pumps) + 1):
@@ -360,6 +352,7 @@ class Interface:
             self.iobuses[IOPi - 1].write_pin(pin, 0)
         self.switch_light(False)
         self.switch_waste_pump(False)
+        self.switch_waste_pump_direction(False)
 
     # --- Medium level functions ---
 
@@ -374,9 +367,7 @@ class Interface:
             t: time (in seconds) to pump the given volume.
         """
         assert volume >= 0, f"Volume {volume} is not valid."
-        assert (
-            pump in self._available_pumps()
-        ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
+        assert pump in self._available_pumps(), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
 
         t = volume / self.calibration["pumps"][f"pump {pump}"]["rate"]["value"]
         return t
@@ -458,9 +449,7 @@ class Interface:
                     IOPi: IOPi number (first IOPi means self.iobuses[0])
                     pin: physical pin on the IOPi
         """
-        assert (
-            pump in self._available_pumps()
-        ), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
+        assert pump in self._available_pumps(), f"Pump {pump} is not in the available pumps {self.available_pumps()}"
 
         return self.pumps[pump - 1]["IOPi"], self.pumps[pump - 1]["pin"]
 

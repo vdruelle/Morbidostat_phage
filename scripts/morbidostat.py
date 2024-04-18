@@ -312,4 +312,4 @@ class Morbidostat:
 
 if __name__ == "__main__":
     morb = Morbidostat()
-    morb.run()
+    # morb.run()

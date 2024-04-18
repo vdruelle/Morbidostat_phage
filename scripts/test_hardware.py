@@ -1,5 +1,6 @@
 import time
 
+import numpy as np
 import RPi.GPIO as GPIO
 import smbus
 from hardware_libraries import ADCPi, IOPi
@@ -12,8 +13,9 @@ def test_I2C_connections():
     """
     bus = smbus.SMBus(1)  # Use 1 for Raspberry Pi 2 and newer, 0 for older versions
     IOPis = [0x20, 0x21, 0x22, 0x23]
-    ADCPis = [0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F]
-    addresses = IOPis + ADCPis
+    ADCPis = [0x68, 0x69, 0x6A, 0x6B]
+    MUXs = [0x70, 0x71]
+    addresses = IOPis + ADCPis + MUXs
 
     print("Performing I2C connections test:")
     for address in addresses:
@@ -27,15 +29,13 @@ def test_I2C_connections():
     print()
 
 
-def test_ADCPi(threshold_voltage=0.05, light_pin=20):
+def test_ADCPi(threshold_voltage=0.05, light_pin=21):
     """Reads voltage from all the pins of all the ADCPis. Perform this test with empty vials in place.
     Write as output which pin got a voltage reading that is below threshold.
     """
     adcs = [
         ADCPi(0x68, 0x69, 14),
         ADCPi(0x6A, 0x6B, 14),
-        ADCPi(0x6C, 0x6D, 14),
-        ADCPi(0x6E, 0x6F, 14),
     ]
 
     GPIO.setwarnings(False)
@@ -50,9 +50,7 @@ def test_ADCPi(threshold_voltage=0.05, light_pin=20):
             if v > threshold_voltage:
                 print(f"    ADC {adc.get_i2c_address1():02X} {adc.get_i2c_address2():02X} {pin} OK")
             else:
-                print(
-                    f"    ADC {adc.get_i2c_address1():02X} {adc.get_i2c_address2():02X} {pin} voltage is {v:0.3f}"
-                )
+                print(f"    ADC {adc.get_i2c_address1():02X} {adc.get_i2c_address2():02X} {pin} voltage is {v:0.3f}")
 
     GPIO.output(light_pin, GPIO.LOW)
     print("Scanning complete.")
@@ -106,8 +104,36 @@ def test_array_pumping(IOPi_address, run_time=10):
     print()
 
 
+def test_OD_pin(adc_pin, adc):
+    for ii in range(100):
+        v = adc.read_voltage(adc_pin)
+        print(f"Voltage: {v}")
+        time.sleep(0.1)
+
+
+def measure_OD_voltage(adc, adc_pin, nb_measures=100, lag=0.02):
+    values = []
+    for ii in range(nb_measures):
+        time.sleep(lag)
+        values += [adc.read_voltage(adc_pin)]
+    return np.mean(values)
+
+
 if __name__ == "__main__":
-    test_I2C_connections()
+    # test_I2C_connections()
     # test_ADCPi()
     # test_pump_sound()
     # test_array_pumping(0x20, 30)
+
+    light_pin = 21
+    adc_pin = 1  # 1 to 8 included
+    adc = ADCPi(0x6A, 0x6B, 14)
+
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(light_pin, GPIO.OUT)
+    GPIO.output(light_pin, GPIO.HIGH)
+    GPIO.output(light_pin, GPIO.LOW)
+
+    while True:
+        print(f"Measured voltage: {measure_OD_voltage(adc, adc_pin, 100)}")
