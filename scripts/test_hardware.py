@@ -63,6 +63,10 @@ def test_LS_connections(MUXs=[0x70, 0x71], sensor_address=0x48):
     print("Performing multiplexer connections test for level sensors:")
     bus = smbus.SMBus(1)
 
+    # Reseting the multiplexers
+    for mux in MUXs:
+        bus.write_byte(mux, 0)
+
     for mux in MUXs:
         for channel in range(0, 8):
             if mux == 0x71 and channel == 7:  # we only have 15 sensors, not 16
@@ -70,10 +74,13 @@ def test_LS_connections(MUXs=[0x70, 0x71], sensor_address=0x48):
             else:
                 try:
                     bus.write_byte(mux, 1 << channel)
+                    time.sleep(0.1)
                     bus.read_byte(sensor_address)
-                    print(f"    Sensor detected on mux 0x{mux:02X} channel {channel}!")
+                    print(f"    Sensor detected on mux 0x{mux:02X} channel {channel+1}!")
                 except (OSError, IOError):
-                    print(f"    No sensor detected on mux 0x{mux:02X} channel {channel}!")
+                    print(f"    No sensor detected on mux 0x{mux:02X} channel {channel+1}!")
+
+        bus.write_byte(mux, 0)  # Close the mux to avoid conflict between multiplexers
 
     print("Scanning complete.")
 
