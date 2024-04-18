@@ -251,7 +251,4 @@ def switching_speed(bus, tca):
 
 
 if __name__ == "__main__":
-    test_capacitive_measure()
-    # bus = SMBus(1)
-    # tca = 0x70
-    # scan_mux_addresses(bus)
+    pass

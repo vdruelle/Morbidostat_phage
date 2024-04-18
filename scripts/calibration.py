@@ -5,8 +5,10 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-from interface import Interface
-from scipy.stats import linregress
+
+# from interface import Interface
+# from scipy.stats import linregress
+from test_bench import Interface
 
 CALI_PATH = "calibrations/"
 
@@ -314,6 +316,7 @@ if __name__ == "__main__":
     # Can still run interactively if no arguments are passed
     # But allows extra arguments to be passed for specific actions
     # Like plotting only
+    # interface = Interface()
     interface = Interface()
     choice = input("What would you like to calibrate ? [OD, pumps, waste, WS, concatenate]: ")
     if choice == "OD":

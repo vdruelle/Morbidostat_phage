@@ -76,7 +76,7 @@ class Interface:
                 iobus.write_pin(ii, 0)
 
         # Setting up vials0
-        self.vials = list(range(1, 3))
+        self.vials = list(range(1, 4))
 
         # Setting up lights and waste pump (controlled by the RPi directly)
         self.lights = 21  # Pin 20
@@ -93,7 +93,7 @@ class Interface:
         # Setting up pumps and measurements
         for ii in range(1, 6):
             self.pumps += [{"IOPi": 1, "pin": ii}]
-        for ii in range(1, 3):
+        for ii in range(4, 7):
             self.ODs += [{"ADCPi": 1, "pin": ii}]
 
         # Vial 1 is pin 4 on ADCPi 1
@@ -256,7 +256,7 @@ class Interface:
             values += [self._measure_voltage(IOPi, pin)]
         return np.mean(values)
 
-    def remove_waste(self, volume: float, verbose=False) -> None:
+    def remove_waste(self, volume: float, reversed: bool = False, verbose=False) -> None:
         """Runs the waste pump to remove a given volume.
 
         Args:
@@ -265,11 +265,13 @@ class Interface:
         """
         assert volume >= 0, f"Cannot remove volume {volume}."
 
-        if verbose:
+        if verbose and not reversed:
             print(f"Removing {round(volume,1)}mL via waste pump.")
+        elif verbose and reversed:
+            print(f"Adding {round(volume,1)}mL back via waste pump.")
 
         dt = volume / self.calibration["waste_pump"]["rate"]["value"]
-        self.run_waste_pump(dt, False)
+        self.run_waste_pump(dt, reversed, False)
 
         if verbose:
             print("Finished running waste pump.")
