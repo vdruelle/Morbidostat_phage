@@ -11,9 +11,9 @@ def test_I2C_connections():
     """Tests that the addresses defined are accessible by the raspberry pi.
     Write as output which one are available and which ones are not.
     """
-    bus = smbus.SMBus(1)  # Use 1 for Raspberry Pi 2 and newer, 0 for older versions
-    IOPis = [0x20, 0x21, 0x22, 0x23]
-    ADCPis = [0x68, 0x69, 0x6A, 0x6B]
+    bus = smbus.SMBus(1)
+    IOPis = [0x20, 0x21, 0x22, 0x23]  # each HAT has 2 chips, so that's 4 I2C addresses
+    ADCPis = [0x68, 0x69, 0x6A, 0x6B]  # same thing here
     MUXs = [0x70, 0x71]
     addresses = IOPis + ADCPis + MUXs
 
@@ -55,6 +55,27 @@ def test_ADCPi(threshold_voltage=0.05, light_pin=21):
     GPIO.output(light_pin, GPIO.LOW)
     print("Scanning complete.")
     print()
+
+
+def test_LS_connections(MUXs=[0x70, 0x71], sensor_address=0x48):
+    """Tests that the level sensors are accessible by the raspberry pi via the multiplexers."""
+
+    print("Performing multiplexer connections test for level sensors:")
+    bus = smbus.SMBus(1)
+
+    for mux in MUXs:
+        for channel in range(0, 8):
+            if mux == 0x71 and channel == 7:  # we only have 15 sensors, not 16
+                pass
+            else:
+                try:
+                    bus.write_byte(mux, 1 << channel)
+                    bus.read_byte(sensor_address)
+                    print(f"    Sensor detected on mux 0x{mux:02X} channel {channel}!")
+                except (OSError, IOError):
+                    print(f"    No sensor detected on mux 0x{mux:02X} channel {channel}!")
+
+    print("Scanning complete.")
 
 
 def test_pump_sound(run_time=1, interval_time=0.5):
@@ -104,36 +125,9 @@ def test_array_pumping(IOPi_address, run_time=10):
     print()
 
 
-def test_OD_pin(adc_pin, adc):
-    for ii in range(100):
-        v = adc.read_voltage(adc_pin)
-        print(f"Voltage: {v}")
-        time.sleep(0.1)
-
-
-def measure_OD_voltage(adc, adc_pin, nb_measures=100, lag=0.02):
-    values = []
-    for ii in range(nb_measures):
-        time.sleep(lag)
-        values += [adc.read_voltage(adc_pin)]
-    return np.mean(values)
-
-
 if __name__ == "__main__":
     # test_I2C_connections()
     # test_ADCPi()
+    test_LS_connections()
     # test_pump_sound()
     # test_array_pumping(0x20, 30)
-
-    light_pin = 21
-    adc_pin = 1  # 1 to 8 included
-    adc = ADCPi(0x6A, 0x6B, 14)
-
-    GPIO.setwarnings(False)
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(light_pin, GPIO.OUT)
-    GPIO.output(light_pin, GPIO.HIGH)
-    GPIO.output(light_pin, GPIO.LOW)
-
-    while True:
-        print(f"Measured voltage: {measure_OD_voltage(adc, adc_pin, 100)}")
