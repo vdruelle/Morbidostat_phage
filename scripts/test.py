@@ -43,29 +43,30 @@ def test_capacitive_data():
         bus.close()
 
 
+def get_capacitance(bus, AD7150_I2C_ADDRESS, averaged=False):
+    if averaged:
+        # Registers for data averaged over time
+        data1 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x05)
+        data2 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x06)
+    else:
+        # Registers for data in real time
+        data1 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x01)
+        data2 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x02)
+
+    data3 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x11)
+
+    capdac = ((data3 - 192) / 8) * 1.625  # the 1.625 there was found to be a good value by testing
+    raw_data = (((data1 * 256 + data2) - 12288) / 40944) * 4  # filtered bytes (by the chip)
+
+    return capdac + raw_data, capdac, raw_data
+
+
 def test_capacitive_measure(sampling_time=0.1):
     from datetime import datetime
 
     def write_register(addr, reg, value):
         bus.write_byte_data(addr, reg, value)
         time.sleep(0.004)  # 4ms delay for register write stability
-
-    def get_capacitance(bus, AD7150_I2C_ADDRESS, averaged=False):
-        if averaged:
-            # Registers for data averaged over time
-            data1 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x05)
-            data2 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x06)
-        else:
-            # Registers for data in real time
-            data1 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x01)
-            data2 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x02)
-
-        data3 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x11)
-
-        capdac = ((data3 - 192) / 8) * 1.625  # the 1.625 there was found to be a good value by testing
-        raw_data = (((data1 * 256 + data2) - 12288) / 40944) * 4  # filtered bytes (by the chip)
-
-        return capdac + raw_data, capdac, raw_data
 
     # Define I2C bus
     bus = SMBus(1)
@@ -79,8 +80,9 @@ def test_capacitive_measure(sampling_time=0.1):
     CONFIGURATION_VALUE = 49
 
     # Mux switching
-    tca = 0x70
-    bus.write_byte(tca, 1 << 0)
+    tca = 0x71
+    bus.write_byte(0x70, 0)
+    bus.write_byte(tca, 1 << 6)
 
     # Setup AD7150
     write_register(AD7150_I2C_ADDRESS, AD7150_REG_CH1_SETUP, CH1_SETUP_VALUE)
@@ -129,21 +131,32 @@ def test_capacitive_measure(sampling_time=0.1):
         bus.close()
 
 
-def switching_speed(bus, tca):
+def switching_speed():
     "Measures how much time it takes to change channel and do a read."
     # Whole function seems to take around 6ms, with 1ms in total for all the switching
     AD7150_I2C_ADDRESS = 0x48
-    bus.write_byte(tca, 1 << 0)  # Switching seems to take around 0.5ms per switch
-    data1 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x05)
-    data2 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x06)
-    data3 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x11)
+    tca1 = 0x70
+    tca2 = 0x71
 
-    bus.write_byte(tca, 1 << 1)
-    data1 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x05)
-    data2 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x06)
-    data3 = bus.read_byte_data(AD7150_I2C_ADDRESS, 0x11)
-    bus.write_byte(tca, 0)
+    bus = SMBus(1)
+    bus.write_byte(tca1, 0)
+    bus.write_byte(tca2, 0)
+
+    data = []
+
+    for ii in range(100):
+        bus.write_byte(tca1, 1 << 0)  # Switching seems to take around 0.5ms per switch
+        tmp = get_capacitance(bus, AD7150_I2C_ADDRESS, True)[0]
+        bus.write_byte(tca1, 0)
+        bus.write_byte(tca2, 1 << 0)
+        data.append([tmp, get_capacitance(bus, AD7150_I2C_ADDRESS, True)[0]])
+        bus.write_byte(tca2, 0)
+
+    data = np.array(data)
+    print(data)
 
 
 if __name__ == "__main__":
+    # test_capacitive_measure()
+    switching_speed()
     pass

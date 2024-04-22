@@ -8,7 +8,7 @@ import yaml
 
 # from interface import Interface
 # from scipy.stats import linregress
-from test_bench import Interface
+from interface import Interface
 
 CALI_PATH = "calibrations/"
 
@@ -157,7 +157,7 @@ def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
     """
 
     # Pre-fill
-    print("\nStarting calibration for waste pump. Put inlets and water and outlets in an empty vial.")
+    print("\nStarting calibration for waste pump. Put inlets in water and outlets in an empty vial.")
     input("When the setup is ready press enter. It will run pump for 20s to fill the tubing.")
     interface.switch_waste_pump(True)
     time.sleep(20)

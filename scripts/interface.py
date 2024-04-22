@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import RPi.GPIO as GPIO
+import smbus
 import yaml
 
 MOCK = False
@@ -24,8 +25,10 @@ class Interface:
 
         # self.pumps[0] is a dictionary with the GPIOplus number and pin number to the first pump
         self.pumps = []
-        # self.ODs[1] is a dictionary with the ADC number + pin number to first vial OD
+        # self.ODs[0] is a dictionary with the ADC number + pin number to first vial OD
         self.ODs = []
+        # self.LS[0] is a dictionary with the multiplexer address + channel number to first vial level sensor
+        self.LS = []
         # This is the pin number (on the RPi, not on the IOPi) for the lights
         self.lights = None
         # This is the pin number (on the RPi, not on the IOPi) for the waste pump
@@ -39,6 +42,10 @@ class Interface:
         self.iobuses = []
         # asyncio tasks waiting for start
         self.asynctasks = []
+        # self.muxs[0] is the address of the first multiplexer connected to the RPI
+        self.muxs = []
+        # I2C bus object to talk to the level sensors
+        self.bus = smbus.SMBus(1)
 
         # Setting hardware connections
         self.set_hardware_connections()
@@ -68,6 +75,10 @@ class Interface:
             adc.set_pga(1)
             adc.set_bit_rate(14)  # 14 bits is read at 0.02 seconds, ~0.07mV precision with PGA 1 (8)
 
+        # Setting up the 2 muxs addresses
+        self.muxs = [0x70, 0x71]
+        self.AD7150_I2C_ADDRESS = 0x48
+
         # Setting up the 2 IOPi (each board contains 2 chips, hence 4 addresses)
         self.iobuses = [
             IOPi(0x20),
@@ -95,13 +106,47 @@ class Interface:
         GPIO.setup(self.waste_pump_direction, GPIO.OUT)
         GPIO.output(self.waste_pump_direction, GPIO.LOW)
 
-        # Setting up pumps and measurements
+        # Setting up pumps
         for ii in range(1, 16):
             self.pumps += [{"IOPi": 1, "pin": ii}]
+
+        # Setting up ODs
         for ii in range(1, 9):
             self.ODs += [{"ADCPi": 1, "pin": ii}]
         for ii in range(1, 8):
             self.ODs += [{"ADCPi": 2, "pin": ii}]
+
+        # Setting up level sensors (harware ordering is reversed from the one of the ODs...)
+        for ii in range(1, 8):
+            self.LS += [{"mux": 2, "channel": 8 - ii}]
+        for ii in range(1, 9):
+            self.LS += [{"mux": 1, "channel": 9 - ii}]
+
+        # Configuring capacitance sensors
+        for mux in self.muxs:
+            self.bus.write_byte(mux, 0)
+        for mux in self.muxs:
+            for channel in range(1, 9):
+                if mux == 0x71 and channel == 8:  # we only have 15 sensors, not 16
+                    pass
+                else:
+                    self.bus.write_byte(mux, 1 << channel - 1)
+                    self.setup_capacitance_sensor(self.bus, self.AD7150_I2C_ADDRESS)
+            self.bus.write_byte(mux, 0)
+
+    def setup_capacitance_sensor(self, bus, sensor=0x48):
+        """Configure the sensors for proper reading of the capacitance."""
+
+        def write_register(addr, reg, value):
+            bus.write_byte_data(addr, reg, value)
+            time.sleep(0.004)  # 4ms delay for register write stability
+
+        AD7150_REG_CH1_SETUP = 0x0B
+        AD7150_REG_CONFIGURATION = 0x0F
+        CH1_SETUP_VALUE = 195  # shorter average, usually pretty good
+        CONFIGURATION_VALUE = 49
+        write_register(sensor, AD7150_REG_CH1_SETUP, CH1_SETUP_VALUE)
+        write_register(sensor, AD7150_REG_CONFIGURATION, CONFIGURATION_VALUE)
 
     def load_calibration(self, file) -> None:
         """Load the calibration file, process it and saves it in the Interface class.
@@ -215,7 +260,7 @@ class Interface:
         loop.run_until_complete(asyncio.gather(*self.asynctasks))
         self.asynctasks = []
 
-    def measure_weight(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
+    def measure_volume(self, vial: int, lag: float = 0.02, nb_measures: int = 1) -> float:
         """Measures the mean weight (in grams) over nb_measures from given vial.
 
         Args:
@@ -227,15 +272,15 @@ class Interface:
             Measured weight.
         """
 
-        return self._voltage_to_weight(vial, self.measure_WS_voltage(vial, lag, nb_measures))
+        return self._capacitance_to_volume(vial, self.measure_LS_capacitance(vial, lag, nb_measures))
 
-    def measure_WS_voltage(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
-        """Measures the mean voltage from the weight sensors corresponding to the vial over nb_measures.
+    def measure_LS_capacitance(self, vial: int, lag: float = 0.02, nb_measures: int = 1) -> float:
+        """Measures the capacitance from the level sensor corresponding to the vial over nb_measure.
 
         Args:
             vial: vial number
             lag: delay between measures (in seconds). Defaults to 0.02.
-            nb_measures: number of measures. Defaults to 10.
+            nb_measures: number of measures. Defaults to 1.
 
         Returns:
             Mean voltage from the weight sensor.
@@ -243,11 +288,16 @@ class Interface:
         assert lag >= 0, f"Lag value {lag} is negative."
         assert nb_measures >= 1, f"Nb of measures {nb_measures} is not suitable."
 
-        IOPi, pin = self._WS_to_pin(vial)
+        for mux in self.muxs:  # TODO handle things better so that we don't have to reset all muxes every measure
+            self.bus.write_byte(mux, 0)
+
+        mux, channel = self._LS_to_mux(vial)
+        self.bus.write_byte(self.muxs[mux - 1], 1 << channel - 1)
+
         values = []
         for ii in range(nb_measures):
             time.sleep(lag)
-            values += [self._measure_voltage(IOPi, pin)]
+            values += [self._read_capacitance()]
         return np.mean(values)
 
     def remove_waste(self, volume: float, verbose=False) -> None:
@@ -393,24 +443,24 @@ class Interface:
 
         return OD
 
-    def _voltage_to_weight(self, vial: int, voltage: float) -> float:
-        """Uses the calibration to convert the voltage measure to an weight in grams.
+    def _capacitance_to_volume(self, vial: int, capacitance: float) -> float:
+        """Uses the calibration to convert the capacitance measure to a volume.
 
         Args:
             vial: vial number.
-            voltage: voltage measured in Volts.
+            capacitance: measured capacitance in pF.
 
         Returns:
-            weight: weight in grams corresponding to the voltage measured for the given vial.
+            volume: volume in mL corresponding to the capacitance measured for the given vial.
         """
         assert vial in self.vials, f"Vial {vial} is not in the available vials: {self.vials}"
 
-        if voltage <= 0:
-            print(f"Got weight voltage {voltage}, which is negative.")
+        if capacitance <= 0:
+            print(f"Got LS capacitance {capacitance}, which is negative.")
 
-        slope = self.calibration["WS"][f"vial {vial}"]["slope"]["value"]
-        intercept = self.calibration["WS"][f"vial {vial}"]["intercept"]["value"]
-        weight = (voltage - intercept) / slope
+        slope = self.calibration["LS"][f"vial {vial}"]["slope"]["value"]
+        intercept = self.calibration["LS"][f"vial {vial}"]["intercept"]["value"]
+        weight = (capacitance - intercept) / slope
 
         return weight
 
@@ -453,22 +503,34 @@ class Interface:
 
         return self.pumps[pump - 1]["IOPi"], self.pumps[pump - 1]["pin"]
 
-    def _WS_to_pin(self, vial_number: int) -> int:
-        """Returns the ADCPi and pin number of the weight sensor associated to the vial.
+    def _LS_to_mux(self, vial_number: int) -> tuple[int, int]:
+        """Returns the mux address and channel number of the level sensor associated to the vial.
 
         Args:
             vial_number: number associated to the vial.
 
         Returns:
-            ADCPi: ADCPi number (first ADCPi means self.adcs[0])
-            pin: physical pin on the ADCPi
+            mux: multiplexer address
+            channel: multiplexer channel associated to the level sensor
         """
         assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
 
-        return (
-            self.weight_sensors[vial_number - 1]["ADCPi"],
-            self.weight_sensors[vial_number - 1]["pin"],
-        )
+        return (self.LS[vial_number - 1]["mux"], self.LS[vial_number - 1]["channel"])
+
+    def _read_capacitance(self, averaged=True):
+        """Measure the capacitance from a sensor and return its values (capacitance, capdac, raw_data)."""
+        if averaged:
+            # Registers for data averaged over time
+            data1 = self.bus.read_byte_data(self.AD7150_I2C_ADDRESS, 0x05)
+            data2 = self.bus.read_byte_data(self.AD7150_I2C_ADDRESS, 0x06)
+        else:
+            # Registers for data in real time
+            data1 = self.bus.read_byte_data(self.AD7150_I2C_ADDRESS, 0x01)
+            data2 = self.bus.read_byte_data(self.AD7150_I2C_ADDRESS, 0x02)
+
+        data3 = self.bus.read_byte_data(self.AD7150_I2C_ADDRESS, 0x11)
+
+        return ((data3 - 192) / 8) * 1.625 + (((data1 * 256 + data2) - 12288) / 40944) * 4
 
     def _OD_to_pin(self, vial_number: int) -> int:
         """Returns the ADCPi and pin number of the OD associated to the vial.
@@ -482,10 +544,7 @@ class Interface:
         """
         assert vial_number in self.vials, f"Vial, {vial_number} is not in the available vials: {self.vials}"
 
-        return (
-            self.ODs[vial_number - 1]["ADCPi"],
-            self.ODs[vial_number - 1]["pin"],
-        )
+        return (self.ODs[vial_number - 1]["ADCPi"], self.ODs[vial_number - 1]["pin"])
 
     def _measure_voltage(self, adcpi: int, adc_pin: int) -> float:
         """Measures voltage from the given pin.
