@@ -4,11 +4,10 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import yaml
-
-# from interface import Interface
-# from scipy.stats import linregress
 from interface import Interface
+from scipy.stats import linregress
 
 CALI_PATH = "calibrations/"
 
@@ -93,9 +92,10 @@ def calibrate_OD(
 
 
 def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float = 120):
-    """Function to perform the calibration of the pumps. It is done by weighing each of the calibration vials
-    before and entering their weights, then running the pumps for dt seconds, and then weighing the vials
-    again and entering their weights. Pumping rates are inferred from the difference in weights.
+    """Function to perform the calibration of the pumps (do it with needles at the end of the tubes as it matters for
+    flow speed !). It is done by weighing each of the calibration vials before and entering their weights, then running
+    the pumps for dt seconds, and then weighing the vials again and entering their weights. Pumping rates are inferred
+    from the difference in weights.
     Saves the pumping rate in a file with the given filename.
 
     Args:
@@ -184,101 +184,106 @@ def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
         file.write(str(pump_rate))
 
 
-def calibrate_weight_sensors(
+def calibrate_level_sensors(
     interface: Interface,
     filename: str,
-    pump_times: int = [10, 20, 30, 40, 50, 60],
-    pumping_rate: float = 0.47,
+    pump_times: int = [2, 4, 6, 8, 10, 12, 14],
+    pumping_rate: float = 0.5,
     vials: list = list(range(1, 16)),
-    empty_vial_weight: float = 33.5,
-    nb_measures: int = 10,
+    nb_measures: int = 3,
     lag: float = 0.02,
-    voltage_threshold: float = 4.8,
+    thresholds=[2, 8],
 ) -> None:
-    """Function to perform the calibration of the weight sensors. This has to be done after the calibration
+    """Function to perform the calibration of the level sensors. This has to be done after the calibration
     of the waste pump as it uses the pump to input a certain volume of liquid, and then calibrate readings
-    depending on the increase in weight.
+    depending on the increase in weight. The pump runs in reverse.
+    CAREFULL: for now the calibration does consider whether it's a small vial or a big one, adjust pumping times
+    accordingly !
 
     Args:
         interface: Interface class defined in the interface.py file.
         filename: name of the savefile.
-        pump_times: Pumping time for calibration in seconds. Defaults to [20, 40, 60].
-        pumping_rate: Pumping rate of the pump in mL/s^-1. 9e-2.
-        vials: list of weight sensor IDs to calibrate. Defaults to list(range(1, 16)).
-        empty_vial_weight: Weight of empty vial in grams. Defaults to 42.
-        nb_measures: Number of voltage measurements for each data point. Defaults to 10.
-        lag: Time between the voltage measurements in seconds. Defaults to 0.1.
-        voltage_threshold: Used to estimate if there is overflow and exclude data point [V]. Defaults to 4.8.
+        pump_times: Pumping time for calibration in seconds.
+        pumping_rate: Pumping rate of the pump in mL/s^-1.
+        vials: list of vial's level sensors to calibrate. Defaults to all vials.
+        nb_measures: Number of measurements for each data point. Defaults to 3.
+        lag: Time between the voltage measurements in seconds. Defaults to 0.02.
     """
 
-    assert len(pump_times) > 2, "Cannot calibrate weight sensors with less than 2 pumping times."
+    assert len(pump_times) > 2, "Cannot calibrate level sensors with less than 2 pumping times."
 
     print()
-    print(f"Starting calibration for weight sensors of vials {vials}.")
+    print(f"Starting calibration for level sensors of vials {vials}.")
     input(f"Put the inlet and outlet of the waste pump in water to pre-fill the tubes, then press enter.")
 
-    print(f"Running waste pump for 30 seconds.")
-    interface.run_waste_pump(30, verbose=True)
+    # interface.run_waste_pump(15, True, verbose=True)
     print(f"Pre-filling done.")
 
-    voltages = np.zeros((len(pump_times) + 1, len(vials)))
+    capacitances = np.zeros((len(pump_times) + 1, len(vials)))
+    interface.switch_waste_pump_direction(True)
 
     for vial_idx, vial_id in enumerate(vials):
         print()
-        input(f"Put outlet of waste pump in the vial {vial_id}, then press enter.")
+        input(f"Put outlet of waste pump in the vial {vial_id}, remove remaining water, and then press enter.")
         tot_time = 0
-        voltages[0, vial_idx] = interface.measure_WS_voltage(vial_id, lag, nb_measures)  # empty vial
-        print(f"    Empty vial voltage: {voltages[0,vial_idx]}")
+        capacitances[0, vial_idx] = interface.measure_LS_capacitance(vial_id, lag, nb_measures)  # empty vial
+        print(f"    Empty vial capacitance: {capacitances[0,vial_idx]}")
 
-        # Why not pump and measure more often? E.g. 2s on, 1s off etc? -> measuring requires human intervention
         for pump_time_idx, t in enumerate(pump_times):
             dt = t - tot_time
-            interface.switch_waste_pump(True)
-            time.sleep(dt)
-            interface.switch_waste_pump(False)
+            # interface.run_waste_pump(dt, True, verbose=False)
             time.sleep(1)
-            voltages[pump_time_idx + 1, vial_idx] = interface.measure_WS_voltage(vial_id, lag, nb_measures)
+            capacitances[pump_time_idx + 1, vial_idx] = interface.measure_LS_capacitance(vial_id, lag, nb_measures)
             tot_time = t
-            print(f"    Measuring voltage after {tot_time}s: {voltages[pump_time_idx+1, vial_idx]}")
+            print(f"    Measuring capacitance after {tot_time}s: {capacitances[pump_time_idx+1, vial_idx]}")
 
-        print(f"Calibration of weight sensor {vial_id} done.")
+        print(f"Calibration of level sensor {vial_id} done.")
+        print(f"Emptying vial {vial_id}.")
+        # interface.run_waste_pump(pump_times[-1] + 1.5, False, verbose=False)
+
+    interface.switch_waste_pump_direction(False)
 
     # Computing the fit for all vials
-    weights = np.array([0] + pump_times) * pumping_rate + empty_vial_weight  # these are in grams
+    volumes = np.array([0] + pump_times) * pumping_rate  # these are in mL
     fit_parameters = np.zeros((len(vials), 2))  # first columns are slope, second are intercepts
 
     for vial_idx, vial_id in enumerate(vials):
-        good_measurements = voltages[:, vial_idx] < voltage_threshold
+        good_measurements = (capacitances[:, vial_idx] > thresholds[0]) & (capacitances[:, vial_idx] < thresholds[1])
         if good_measurements.sum() > 1:
             slope, intercept, _, _, _ = linregress(
-                weights[good_measurements],
-                voltages[good_measurements, vial_idx],
+                volumes[good_measurements],
+                capacitances[good_measurements, vial_idx],
             )
         else:
             print("Less than 2 good measurements, also using saturated measurements for vial" + str(vial_id))
-            slope, intercept, _, _, _ = linregress(weights, voltages[:, vial_idx])
+            slope, intercept, _, _, _ = linregress(volumes, capacitances[:, vial_idx])
         fit_parameters[vial_idx, 0] = slope
         fit_parameters[vial_idx, 1] = intercept
 
     print(f"Calibration completed. Saving results in file {filename} and plotting results.")
-    np.savetxt(CALI_PATH + filename, fit_parameters)
+    df = pd.DataFrame(fit_parameters, columns=["slope", "intercept"])
+    df = df.assign(vial=vials)
+    df = df[["vial", "slope", "intercept"]]
+    df.to_csv(CALI_PATH + filename, sep="\t", index=False, header=True)
 
     # make figure showing calibration
     plt.figure()
-    plt.plot(weights, voltages, ".-")
-    plt.xlabel("Weight [g]")
-    plt.ylabel("Voltage [V]")
+    plt.plot(volumes, capacitances, ".-")
+    plt.plot([0, volumes[-1]], [thresholds[0], thresholds[0]], "--", c="k")
+    plt.plot([0, volumes[-1]], [thresholds[1], thresholds[1]], "--", c="k")
+    plt.xlabel("Volume [mL]")
+    plt.ylabel("Capacitance [pF]")
     plt.show()
 
 
-def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, cali_waste_pump: str, output: str):
+def group_calibrations(cali_OD: str, cali_LS: str, cali_pumps: str, cali_waste_pump: str, output: str):
     fits_OD = np.loadtxt(CALI_PATH + cali_OD)
-    fits_WS = np.loadtxt(CALI_PATH + cali_WS)
+    fits_LS = np.loadtxt(CALI_PATH + cali_LS)
     rate_pumps = np.loadtxt(CALI_PATH + cali_pumps)
     rate_waste_pump = np.loadtxt(CALI_PATH + cali_waste_pump)
 
     print()
-    print(f"Concatenating {cali_OD}, {cali_WS}, {cali_pumps} and {cali_waste_pump}")
+    print(f"Concatenating {cali_OD}, {cali_LS}, {cali_pumps} and {cali_waste_pump}")
 
     calibration_dict = {}
 
@@ -290,13 +295,13 @@ def group_calibrations(cali_OD: str, cali_WS: str, cali_pumps: str, cali_waste_p
         }
     calibration_dict["OD"] = cali_OD
 
-    cali_WS = {}
-    for ii in range(fits_WS.shape[0]):
-        cali_WS[f"vial {ii+1}"] = {
-            "slope": {"value": float(fits_WS[ii, 0]), "units": "V.g^-1"},
-            "intercept": {"value": float(fits_WS[ii, 1]), "units": "V"},
+    cali_LS = {}
+    for ii in range(fits_LS.shape[0]):
+        cali_LS[f"vial {ii+1}"] = {
+            "slope": {"value": float(fits_LS[ii, 0]), "units": "pF.mL^-1"},
+            "intercept": {"value": float(fits_LS[ii, 1]), "units": "pF"},
         }
-    calibration_dict["WS"] = cali_WS
+    calibration_dict["LS"] = cali_LS
 
     cali_pumps = {}
     for ii in range(rate_pumps.shape[0]):
@@ -316,17 +321,20 @@ if __name__ == "__main__":
     # Can still run interactively if no arguments are passed
     # But allows extra arguments to be passed for specific actions
     # Like plotting only
-    # interface = Interface()
+
     interface = Interface()
+    vials = [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14]
+    pumps = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14]
+
     choice = input("What would you like to calibrate ? [OD, pumps, waste, WS, concatenate]: ")
     if choice == "OD":
-        calibrate_OD(interface, "OD.txt", nb_standards=4, vials=[4, 7, 14, 1, 10, 11])
+        calibrate_OD(interface, "OD.txt", nb_standards=4, vials=vials)
     elif choice == "pumps":
         calibrate_pumps(interface, "pumps.txt", [1, 2, 4, 6, 7, 8])
     elif choice == "waste":
         calibrate_waste_pump(interface, "waste_pump.txt")
-    elif choice == "WS":
-        calibrate_weight_sensors(interface, "WS.txt", vials=[4, 7, 14, 1, 10, 11])
+    elif choice == "LS":
+        calibrate_level_sensors(interface, "LS.txt", vials=vials)
     elif choice == "concatenate":
         # This takes the time given by the RPi, which desyncs when it is turned off.
         # One can update it via the consol by typing (american format, months first): sudo date -s "06/07/2023 11:46"
