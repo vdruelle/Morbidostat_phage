@@ -17,7 +17,7 @@ def calibrate_OD(
     filename: str,
     nb_standards: int,
     vials: list = list(range(1, 16)),
-    nb_measures: int = 10,
+    nb_measures: int = 50,
     lag: float = 0.02,
     voltage_threshold: float = 4.8,
 ) -> None:
@@ -45,7 +45,7 @@ def calibrate_OD(
 
     print("Preheating LEDs for measurments, please wait 2 minutes.")
     interface.switch_light(True)
-    time.sleep(120)
+    # time.sleep(120)
 
     # Measuring the voltage for all vial + OD standard combo
     for standard in range(nb_standards):  # iterating over all standards
@@ -81,7 +81,11 @@ def calibrate_OD(
         fit_parameters[ii, 1] = intercept
 
     print(f"Calibration completed. Saving results in file {filename} and plotting results.")
-    np.savetxt(CALI_PATH + filename, fit_parameters)
+
+    df = pd.DataFrame(fit_parameters, columns=["slope", "intercept"])
+    df = df.assign(vial=vials)
+    df = df[["vial", "slope", "intercept"]]
+    df.to_csv(CALI_PATH + filename, sep="\t", index=False, header=True)
 
     # make figure showing calibration
     plt.figure()
@@ -140,7 +144,10 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
     pump_rates = (weights[1, :] - weights[0, :]) / dt  # g.s^-1 <=> mL*s^-1
 
     print(f"Saving data in {filename}.")
-    np.savetxt(CALI_PATH + filename, pump_rates)
+    df = pd.DataFrame(pump_rates, columns=["rate"])
+    df = df.assign(pump=pumps)
+    df = df[["pump", "rate"]]
+    df.to_csv(CALI_PATH + filename, sep="\t", index=False, header=True)
 
 
 def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
@@ -277,10 +284,10 @@ def calibrate_level_sensors(
 
 
 def group_calibrations(cali_OD: str, cali_LS: str, cali_pumps: str, cali_waste_pump: str, output: str):
-    fits_OD = np.loadtxt(CALI_PATH + cali_OD)
-    fits_LS = np.loadtxt(CALI_PATH + cali_LS)
-    rate_pumps = np.loadtxt(CALI_PATH + cali_pumps)
-    rate_waste_pump = np.loadtxt(CALI_PATH + cali_waste_pump)
+    fits_OD = pd.read_csv(CALI_PATH + cali_OD, sep="\t", header="infer")
+    fits_LS = pd.read_csv(CALI_PATH + cali_LS, sep="\t", header="infer")
+    rate_pumps = pd.read_csv(CALI_PATH + cali_pumps, sep="\t", header="infer")
+    rate_waste_pump = pd.read_csv(CALI_PATH + cali_waste_pump, sep="\t", header="infer")
 
     print()
     print(f"Concatenating {cali_OD}, {cali_LS}, {cali_pumps} and {cali_waste_pump}")
@@ -288,30 +295,32 @@ def group_calibrations(cali_OD: str, cali_LS: str, cali_pumps: str, cali_waste_p
     calibration_dict = {}
 
     cali_OD = {}
-    for ii in range(fits_OD.shape[0]):
-        cali_OD[f"vial {ii+1}"] = {
-            "slope": {"value": float(fits_OD[ii, 0]), "units": "V.OD^-1"},
-            "intercept": {"value": float(fits_OD[ii, 1]), "units": "V"},
+    for ii in fits_OD["vial"]:
+        cali_OD[f"vial {ii}"] = {
+            "slope": {"value": float(fits_OD[fits_OD["vial"] == ii]["slope"].values[0]), "units": "V.OD^-1"},
+            "intercept": {"value": float(fits_OD[fits_OD["vial"] == ii]["intercept"].values[0]), "units": "V"},
         }
     calibration_dict["OD"] = cali_OD
 
     cali_LS = {}
-    for ii in range(fits_LS.shape[0]):
-        cali_LS[f"vial {ii+1}"] = {
-            "slope": {"value": float(fits_LS[ii, 0]), "units": "pF.mL^-1"},
-            "intercept": {"value": float(fits_LS[ii, 1]), "units": "pF"},
+    for ii in fits_LS["vial"]:
+        cali_LS[f"vial {ii}"] = {
+            "slope": {"value": float(fits_LS[fits_LS["vial"] == ii]["slope"].values[0]), "units": "pF.mL^-1"},
+            "intercept": {"value": float(fits_LS[fits_LS["vial"] == ii]["intercept"].values[0]), "units": "pF"},
         }
     calibration_dict["LS"] = cali_LS
 
     cali_pumps = {}
-    for ii in range(rate_pumps.shape[0]):
-        cali_pumps[f"pump {ii+1}"] = {"rate": {"value": float(rate_pumps[ii]), "units": "mL.s^-1"}}
+    for ii in rate_pumps["pump"]:
+        cali_pumps[f"pump {ii}"] = {
+            "rate": {"value": float(rate_pumps[rate_pumps["pump"] == ii]["rate"].values[0]), "units": "mL.s^-1"}
+        }
     calibration_dict["pumps"] = cali_pumps
 
-    calibration_dict["waste_pump"] = {"rate": {"value": float(rate_waste_pump), "units": "mL.s^-1"}}
+    calibration_dict["waste_pump"] = {"rate": {"value": float(rate_waste_pump["rate"].values[0]), "units": "mL.s^-1"}}
 
     with open(CALI_PATH + output + ".yaml", "w") as f:
-        yaml.dump(calibration_dict, f)
+        yaml.dump(calibration_dict, f, sort_keys=False)
 
     print(f"Calibration saved in {output}.yaml")
 
@@ -328,18 +337,18 @@ if __name__ == "__main__":
 
     choice = input("What would you like to calibrate ? [OD, pumps, waste, WS, concatenate]: ")
     if choice == "OD":
-        calibrate_OD(interface, "OD.txt", nb_standards=4, vials=vials)
+        calibrate_OD(interface, "OD.tsv", nb_standards=4, vials=vials)
     elif choice == "pumps":
-        calibrate_pumps(interface, "pumps.txt", [1, 2, 4, 6, 7, 8])
+        calibrate_pumps(interface, "pumps.tsv", pumps)
     elif choice == "waste":
-        calibrate_waste_pump(interface, "waste_pump.txt")
+        calibrate_waste_pump(interface, "waste_pump.tsv")
     elif choice == "LS":
-        calibrate_level_sensors(interface, "LS.txt", vials=vials)
+        calibrate_level_sensors(interface, "LS.tsv", vials=vials)
     elif choice == "concatenate":
         # This takes the time given by the RPi, which desyncs when it is turned off.
         # One can update it via the consol by typing (american format, months first): sudo date -s "06/07/2023 11:46"
         t = time.localtime()
         date_string = f"{t.tm_mon:02d}-{t.tm_mday:02d}-{t.tm_hour:02d}h-{t.tm_min:02d}min"
-        group_calibrations("OD.txt", "WS.txt", "pumps.txt", "waste_pump.txt", date_string)
+        group_calibrations("OD.tsv", "LS.tsv", "pumps.tsv", "waste_pump.tsv", date_string)
     else:
         print(f"{choice} is not in the available actions: [OD, pumps, waste, WS, concatenate]")

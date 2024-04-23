@@ -17,9 +17,9 @@ class Morbidostat:
         self.interface = Interface()
 
         # Vial of the cultures, as defined in Interface class
-        self.cultures = [4, 7, 14]  # Bacterial cultures, they are wbbl+ variant
-        self.phage_vials = [1, 10, 11]  # Experiment vials (with phages)
-        self.vial_volume = 20  # In milliliters
+        self.cultures = [3, 4, 8, 9, 13, 14]  # Bacterial cultures, they are wbbl+ variant
+        self.phage_vials = [1, 2, 6, 7, 11, 12]  # Experiment vials (with phages)
+        self.culture_volume = 20  # In milliliters
         self.pumps = []
         self.set_pumps()
 
@@ -31,17 +31,15 @@ class Morbidostat:
             + [f"phage_vial {ii}" for ii in range(1, len(self.phage_vials) + 1)]
         )
         self.ODs = pd.DataFrame(columns=columns)
-        self.weights = pd.DataFrame(columns=columns)
+        self.volumes = pd.DataFrame(columns=columns)
 
         self.OD_savefile = RUN_DIRECTORY + "ODs.tsv"
-        self.weights_savefile = RUN_DIRECTORY + "weights.tsv"
+        self.voolumes_savefile = RUN_DIRECTORY + "volumes.tsv"
 
     def set_pumps(self):
         "Creates all the pumps used for the experiment."
 
-        def create_pump(
-            number, input_type: str, input_number: int, output_type: str, output_number: int
-        ) -> dict:
+        def create_pump(number, input_type: str, input_number: int, output_type: str, output_number: int) -> dict:
             """Helper function to create the pumps, which are basically dictionnaries.
 
             Args:
@@ -64,16 +62,20 @@ class Morbidostat:
         # Pumps from LB to wbbl(+) cultures
         self.pumps += [create_pump(1, "media", 1, "culture", 1)]
         self.pumps += [create_pump(2, "media", 1, "culture", 2)]
-        self.pumps += [create_pump(4, "media", 1, "culture", 3)]
+        self.pumps += [create_pump(3, "media", 1, "culture", 3)]
+        self.pumps += [create_pump(4, "media", 1, "culture", 4)]
+        self.pumps += [create_pump(5, "media", 1, "culture", 5)]
+        self.pumps += [create_pump(6, "media", 1, "culture", 6)]
 
         # Pumps from wbbl(+) variant to phages
-        self.pumps += [create_pump(6, "culture", 1, "phage vial", 1)]
-        self.pumps += [create_pump(7, "culture", 2, "phage vial", 2)]
-        self.pumps += [create_pump(8, "culture", 3, "phage vial", 3)]
+        self.pumps += [create_pump(9, "culture", 1, "phage vial", 1)]
+        self.pumps += [create_pump(10, "culture", 2, "phage vial", 2)]
+        self.pumps += [create_pump(11, "culture", 3, "phage vial", 3)]
+        self.pumps += [create_pump(12, "culture", 4, "phage vial", 4)]
+        self.pumps += [create_pump(13, "culture", 5, "phage vial", 5)]
+        self.pumps += [create_pump(14, "culture", 6, "phage vial", 6)]
 
-    def get_pump_number(
-        self, input_type: str, input_number: int, output_type: str, output_number: int
-    ) -> int:
+    def get_pump_number(self, input_type: str, input_number: int, output_type: str, output_number: int) -> int:
         """Helper function to find the pump number from the input and output of that pump.
 
         Args:
@@ -114,24 +116,24 @@ class Morbidostat:
 
         self.ODs.loc[len(self.ODs)] = [self.experiment_time()] + ODs
 
-    def record_weights(self) -> None:
-        """Measures weights of all vials and store these values along with the appropriate experiment time."""
-        weights = []
+    def record_volumes(self) -> None:
+        """Measures volumes of all vials and store these values along with the appropriate experiment time."""
+        volumes = []
         for vial in self.cultures + self.phage_vials:
-            weights += [self.interface.measure_WS_voltage(vial)]
+            volumes += [self.interface.measure_volume(vial, 0.02, 3)]
 
-        self.weights.loc[len(self.weights)] = [self.experiment_time()] + weights
+        self.volumes.loc[len(self.volumes)] = [self.experiment_time()] + volumes
 
     def save_data(self) -> None:
-        """Saves OD and weight data to file."""
+        """Saves ODs and volumes data to file."""
         self.ODs.to_csv(self.OD_savefile, sep="\t", index=False)
-        self.weights.to_csv(self.weights_savefile, sep="\t", index=False)
+        self.volumes.to_csv(self.volumes_savefile, sep="\t", index=False)
 
-    def maintain_cultures(self, target_OD: float = 0.5, verbose: bool = False) -> list:
+    def maintain_cultures(self, target_OD: float = 0.3, verbose: bool = False) -> list:
         """Maintain all cultures at the target OD.
 
         Args:
-            target_OD: target OD of the cultures. Defaults to 0.5.
+            target_OD: target OD of the cultures. Defaults to 0.3.
 
         Returns:
             list of media volumes added to the cultures.
@@ -157,14 +159,12 @@ class Morbidostat:
         volume_to_pump = 0
         if current_OD > target_OD:
             dilution_ratio = current_OD / target_OD
-            volume_to_pump = (dilution_ratio - 1) * self.vial_volume
+            volume_to_pump = (dilution_ratio - 1) * self.culture_volume
             media_pump_number = self.get_pump_number("media", 1, "culture", culture)
             self.interface.inject_volume(media_pump_number, volume_to_pump, verbose=verbose)
 
             if verbose:
-                print(
-                    f"Vial {self.cultures[culture-1]} has OD {round(current_OD,3)}, above target OD {target_OD}."
-                )
+                print(f"Vial {self.cultures[culture-1]} has OD {round(current_OD,3)}, above target OD {target_OD}.")
                 print(f"Pumping {round(volume_to_pump,3)}mL via pump {media_pump_number}.")
 
         else:
@@ -179,7 +179,7 @@ class Morbidostat:
             print(
                 f"Injecting {round(volume,3)}mL from vial {self.cultures[culture-1]} to vial {self.phage_vials[phage_vial-1]}"
             )
-        self.interface.inject_volume(pump_number, volume, verbose=verbose)
+        self.interface.inject_volume(pump_number, volume, max_volume=3, verbose=verbose)
 
     def feed_phages(self, volume: list[float], safety_factor: float = 0.8, verbose: bool = False):
         """
@@ -193,6 +193,9 @@ class Morbidostat:
         self.inject_bacteria(1, 1, volume[0] * safety_factor, verbose)
         self.inject_bacteria(2, 2, volume[1] * safety_factor, verbose)
         self.inject_bacteria(3, 3, volume[2] * safety_factor, verbose)
+        self.inject_bacteria(4, 4, volume[3] * safety_factor, verbose)
+        self.inject_bacteria(5, 5, volume[4] * safety_factor, verbose)
+        self.inject_bacteria(6, 6, volume[5] * safety_factor, verbose)
         self.interface.execute_pumping()
 
     def cycle(self, safety_factor: float = 2) -> None:
@@ -202,25 +205,25 @@ class Morbidostat:
             safety_factor: This controls how much more the waste pump removes compared to what's pumped in. Defaults to 2.
         """
         self.record_ODs()
-        self.record_weights()
+        self.record_volumes()
 
         volumes = self.maintain_cultures(0.3, verbose=True)
         self.interface.wait_mixing(10)
 
-        self.record_weights()
+        self.record_volumes()
         self.record_ODs()
 
         self.feed_phages(volumes, verbose=True)
         self.interface.wait_mixing(10)
-        self.record_weights()
+        self.record_volumes()
         self.record_ODs()
 
         self.interface.remove_waste(max(volumes) * safety_factor, verbose=True)
         self.interface.wait_mixing(10)
         self.record_ODs()
-        self.record_weights()
+        self.record_volumes()
 
-    def run(self, cycle_time: int = 300, tot_time: int = 7 * 24 * 3600) -> None:
+    def run(self, cycle_time: int = 120, tot_time: int = 15 * 24 * 3600) -> None:
         print("Starting experiment...")
         self.interface.switch_light(True)
         time.sleep(100)
@@ -249,24 +252,24 @@ class Morbidostat:
         self.interface.execute_pumping()
         self.interface.wait_mixing(10)
 
-        # Taking half of that volume to phage vials
-        self.feed_phages([0.75 * volume, 0.75 * volume, 0.75 * volume], verbose=verbose)
+        # Taking some of that to the phages
+        self.feed_phages([3 for ii in range(6)], verbose=verbose)
         self.interface.wait_mixing(10)
 
         # Removing waste
         self.interface.remove_waste(volume * safety_factor, verbose)
 
     def empty_cultures(self, verbose: bool = True):
-        """Empty most the culture vials. They are the only ones that can be emptied since the other ones don't
-        have a needle that goes to the bottom. This leaves osme liquid in so that the pumps still work.
+        """Empty most of the culture vials. They are the only ones that can be emptied since the other ones don't
+        have a needle that goes to the bottom. This leaves some liquid in so that the pumps still work.
 
         Args:
             verbose: Defaults to True.
         """
         print()
         print("Emptying of the cultures vials in 3 steps")
-        for ii in range(3):
-            self.feed_phages([5, 5, 5], verbose=verbose)
+        for ii in range(5):
+            self.feed_phages([3 for ii in range(6)], verbose=verbose)
             self.interface.wait_mixing(10)
             self.interface.remove_waste(10, verbose)
         print("Done emptying the culture vials")

@@ -52,7 +52,7 @@ class Interface:
 
         # Loading calibration, it's a dict with the same format as the .yaml calibration file
         self.calibration = None
-        self.load_calibration("No_calibration.yaml")
+        self.load_calibration("04-23-11h-22min.yaml")
         self.turn_off()
 
     # Destructor of the interface. Gets called when the interface object is deleted, used to reset setup.
