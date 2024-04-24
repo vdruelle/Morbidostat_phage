@@ -313,10 +313,7 @@ class Interface:
             print(f"Removing {round(volume,1)}mL via waste pump.")
 
         dt = volume / self.calibration["waste_pump"]["rate"]["value"]
-        self.run_waste_pump(dt, False)
-
-        if verbose:
-            print("Finished running waste pump.")
+        self.run_waste_pump(dt, False, verbose=verbose)
 
     def run_waste_pump(self, dt, reversed: bool = False, verbose=True) -> None:
         """Runs the waste pump for the given amount of time.
