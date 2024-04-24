@@ -1,5 +1,6 @@
 # Main class used for the morbidostat experiments
 
+import os
 import time
 
 import matplotlib.pyplot as plt
@@ -34,7 +35,8 @@ class Morbidostat:
         self.volumes = pd.DataFrame(columns=columns)
 
         self.OD_savefile = RUN_DIRECTORY + "ODs.tsv"
-        self.voolumes_savefile = RUN_DIRECTORY + "volumes.tsv"
+        # self.volumes_savefile = RUN_DIRECTORY + "volumes.tsv"
+        self.volumes_savefile = RUN_DIRECTORY + "capacitances.tsv"
 
     def set_pumps(self):
         "Creates all the pumps used for the experiment."
@@ -109,7 +111,8 @@ class Morbidostat:
         return time.time() - self.experiment_start
 
     def record_ODs(self) -> None:
-        """Measures OD in all vials and store these values along with the appropriate experiment time."""
+        """Measures OD in all vials and store these values along with the appropriate experiment time.
+        Takes around 3sec for all vials."""
         ODs = []
         for vial in self.cultures + self.phage_vials:
             ODs += [self.interface.measure_OD(vial)]
@@ -117,17 +120,23 @@ class Morbidostat:
         self.ODs.loc[len(self.ODs)] = [self.experiment_time()] + ODs
 
     def record_volumes(self) -> None:
-        """Measures volumes of all vials and store these values along with the appropriate experiment time."""
+        """Measures volumes of all vials and store these values along with the appropriate experiment time.
+        Takes around 3sec for all vials."""
         volumes = []
         for vial in self.cultures + self.phage_vials:
-            volumes += [self.interface.measure_volume(vial, 0.02, 3)]
+            # volumes += [self.interface.measure_volume(vial),3)]
+            volumes += [round(self.interface.measure_LS_capacitance(vial), 3)]
 
         self.volumes.loc[len(self.volumes)] = [self.experiment_time()] + volumes
 
     def save_data(self) -> None:
-        """Saves ODs and volumes data to file."""
-        self.ODs.to_csv(self.OD_savefile, sep="\t", index=False)
-        self.volumes.to_csv(self.volumes_savefile, sep="\t", index=False)
+        """Append the ODs and volumes to the savefiles and clear the dataframes to avoid excessive size."""
+        header = not os.path.exists(self.OD_savefile)
+        self.ODs.to_csv(self.OD_savefile, mode="a", header=header, index=False, sep="\t")
+        self.ODs.drop(self.ODs.index, inplace=True)
+        header = not os.path.exists(self.volumes_savefile)
+        self.volumes.to_csv(self.volumes_savefile, mode="a", header=header, index=False, sep="\t")
+        self.volumes.drop(self.volumes.index, inplace=True)
 
     def maintain_cultures(self, target_OD: float = 0.3, verbose: bool = False) -> list:
         """Maintain all cultures at the target OD.
@@ -208,18 +217,19 @@ class Morbidostat:
         self.record_volumes()
 
         volumes = self.maintain_cultures(0.3, verbose=True)
-        self.interface.wait_mixing(10)
+        self.maintain_cultures(0.3, verbose=True)
+        self.interface.wait_mixing(5)
 
         self.record_volumes()
         self.record_ODs()
 
         self.feed_phages(volumes, verbose=True)
-        self.interface.wait_mixing(10)
+        self.interface.wait_mixing(5)
         self.record_volumes()
         self.record_ODs()
 
         self.interface.remove_waste(max(volumes) * safety_factor, verbose=True)
-        self.interface.wait_mixing(10)
+        self.interface.wait_mixing(5)
         self.record_ODs()
         self.record_volumes()
 
@@ -251,13 +261,16 @@ class Morbidostat:
             self.interface.inject_volume(media_pump_number, volume, verbose=verbose)
         self.interface.execute_pumping()
         self.interface.wait_mixing(10)
+        self.record_volumes()
 
         # Taking some of that to the phages
         self.feed_phages([3 for ii in range(6)], verbose=verbose)
         self.interface.wait_mixing(10)
+        self.record_volumes()
 
         # Removing waste
         self.interface.remove_waste(volume * safety_factor, verbose)
+        self.record_volumes()
 
     def empty_cultures(self, verbose: bool = True):
         """Empty most of the culture vials. They are the only ones that can be emptied since the other ones don't
@@ -305,10 +318,14 @@ class Morbidostat:
         for ii in range(nb_cycle):
             print(f"\nCleaning cycle {ii+1}")
             self.cleaning_cycle(volume_cycle, verbose=True)
+            print(self.volumes)
             print(f"Waiting for {wait_time} seconds.")
             time.sleep(wait_time)
+            print()
 
         self.empty_cultures(True)
+        self.record_volumes()
+        print(self.volumes)
         print()
         print("--- Finished cleaning sequence ! ---")
 

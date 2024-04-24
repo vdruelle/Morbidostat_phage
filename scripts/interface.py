@@ -161,7 +161,7 @@ class Interface:
             self.calibration = yaml.load(stream, Loader=yaml.loader.BaseLoader)
 
         # Converting values from string to floats
-        for key1 in ["OD", "pumps"]:
+        for key1 in ["OD", "pumps", "LS"]:
             for key2 in self.calibration[key1].keys():
                 for key3 in self.calibration[key1][key2].keys():
                     self.calibration[key1][key2][key3]["value"] = float(self.calibration[key1][key2][key3]["value"])
@@ -183,7 +183,7 @@ class Interface:
             Measured OD.
         """
 
-        return self._voltage_to_OD(vial, self.measure_OD_voltage(vial, lag, nb_measures))
+        return round(self._voltage_to_OD(vial, self.measure_OD_voltage(vial, lag, nb_measures)), 3)
 
     def measure_OD_voltage(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
         """Measures voltage from phototransistor corresponding to the vial.
@@ -260,7 +260,7 @@ class Interface:
         loop.run_until_complete(asyncio.gather(*self.asynctasks))
         self.asynctasks = []
 
-    def measure_volume(self, vial: int, lag: float = 0.02, nb_measures: int = 1) -> float:
+    def measure_volume(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
         """Measures the mean weight (in grams) over nb_measures from given vial.
 
         Args:
@@ -272,9 +272,9 @@ class Interface:
             Measured weight.
         """
 
-        return self._capacitance_to_volume(vial, self.measure_LS_capacitance(vial, lag, nb_measures))
+        return round(self._capacitance_to_volume(vial, self.measure_LS_capacitance(vial, lag, nb_measures)), 3)
 
-    def measure_LS_capacitance(self, vial: int, lag: float = 0.02, nb_measures: int = 1) -> float:
+    def measure_LS_capacitance(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
         """Measures the capacitance from the level sensor corresponding to the vial over nb_measure.
 
         Args:
