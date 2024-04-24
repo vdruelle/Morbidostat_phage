@@ -217,7 +217,6 @@ class Morbidostat:
         self.record_volumes()
 
         volumes = self.maintain_cultures(0.3, verbose=True)
-        self.maintain_cultures(0.3, verbose=True)
         self.interface.wait_mixing(5)
 
         self.record_volumes()
