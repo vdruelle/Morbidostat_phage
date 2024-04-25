@@ -261,7 +261,7 @@ class Interface:
         self.asynctasks = []
 
     def measure_volume(self, vial: int, lag: float = 0.02, nb_measures: int = 10) -> float:
-        """Measures the mean weight (in grams) over nb_measures from given vial.
+        """Measures the mean volume (in mL) over nb_measures from given vial.
 
         Args:
             vial: vial number.
@@ -269,7 +269,7 @@ class Interface:
             nb_measures: number of measures. Defaults to 10.
 
         Returns:
-            Measured weight.
+            Measured volume.
         """
 
         return round(self._capacitance_to_volume(vial, self.measure_LS_capacitance(vial, lag, nb_measures)), 3)
@@ -283,7 +283,7 @@ class Interface:
             nb_measures: number of measures. Defaults to 1.
 
         Returns:
-            Mean voltage from the weight sensor.
+            Mean capacitance from the level sensor.
         """
         assert lag >= 0, f"Lag value {lag} is negative."
         assert nb_measures >= 1, f"Nb of measures {nb_measures} is not suitable."
@@ -457,9 +457,9 @@ class Interface:
 
         slope = self.calibration["LS"][f"vial {vial}"]["slope"]["value"]
         intercept = self.calibration["LS"][f"vial {vial}"]["intercept"]["value"]
-        weight = (capacitance - intercept) / slope
+        volume = (capacitance - intercept) / slope
 
-        return weight
+        return volume
 
     def _add_pumping(self, pump: int, dt: float, verbose: bool = False) -> None:
         """Add a pumping task to the async tasks list. Used for all pumps except waste pump.

@@ -298,14 +298,14 @@ class Morbidostat:
         volume = 10
         safety_factor = 2
         print()
-        print("Filling of the cultures vials in 5 steps")
+        print("Filling of vials in 5 steps")
         for ii in range(5):
             for culture in range(1, len(self.cultures) + 1):
                 media_pump_number = self.get_pump_number("media", 1, "culture", culture)
                 self.interface.inject_volume(media_pump_number, volume, verbose=verbose)
             self.interface.execute_pumping()
             self.interface.wait_mixing(10)
-            self.feed_phages([min(3, 0.75 * volume) for ii in range(len(self.phage_vials))], verbose=verbose)
+            self.feed_phages([min(3, volume) for ii in range(len(self.phage_vials))], verbose=verbose)
             self.interface.remove_waste(volume * safety_factor, verbose)
 
     def cleaning_sequence(self, nb_cycle: int = 3, volume_cycle: float = 10, wait_time: float = 60):

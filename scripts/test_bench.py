@@ -1,6 +1,4 @@
-# Defines the class `interface` with all the hardware relations (which pin is what) and the default functions
-# to run the morbidostat. Eventually the low level functions will have to be taken care of with the `asyncio`
-# library.
+# Duplicate of the interface class but for the test bench as conenctions and useage change all the time
 
 import asyncio
 import time
