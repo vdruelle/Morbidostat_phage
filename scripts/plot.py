@@ -8,8 +8,14 @@ def plot_ODs(filename):
     plt.figure()
     for ii in range(1, 13):
         column = df.columns[ii]
-        plt.plot(df["time"], df[column], label=column)
-    plt.xlabel("Time [s]")
+        if "culture" in column:
+            linestyle = "-"
+        elif "phage_vial" in column:
+            linestyle = "--"
+        else:
+            raise ValueError(f"Unexpected column name '{column}'")
+        plt.plot(df["time"] - df["time"][0] / 3600, df[column], label=column, linestyle=linestyle)
+    plt.xlabel("Time [h]")
     plt.ylabel("OD [a.u.]")
     plt.legend()
     plt.grid()
@@ -21,8 +27,14 @@ def plot_volumes(filename):
     plt.figure()
     for ii in range(1, 13):
         column = df.columns[ii]
-        plt.plot(df["time"], df[column], label=column)
-    plt.xlabel("Time [s]")
+        if "culture" in column:
+            linestyle = "-"
+        elif "phage_vial" in column:
+            linestyle = "--"
+        else:
+            raise ValueError(f"Unexpected column name '{column}'")
+        plt.plot(df["time"] - df["time"][0] / 3600, df[column], label=column, linestyle=linestyle)
+    plt.xlabel("Time [h]")
     plt.ylabel("Capacitance [pF]")
     plt.legend()
     plt.grid()

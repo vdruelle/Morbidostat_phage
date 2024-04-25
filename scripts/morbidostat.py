@@ -108,7 +108,8 @@ class Morbidostat:
         Returns:
             time: time since the experiment start in seconds.
         """
-        return time.time() - self.experiment_start
+        # return time.time() - self.experiment_start
+        return time.time()
 
     def record_ODs(self) -> None:
         """Measures OD in all vials and store these values along with the appropriate experiment time.
@@ -127,7 +128,7 @@ class Morbidostat:
             # volumes += [self.interface.measure_volume(vial),3)]
             volumes += [round(self.interface.measure_LS_capacitance(vial), 3)]
 
-        self.volumes.loc[len(self.volumes)] = [self.experiment_time()] + volumes
+        self.volumes.loc[len(self.volumes)] = [round(self.experiment_time(), 1)] + volumes
 
     def save_data(self) -> None:
         """Append the ODs and volumes to the savefiles and clear the dataframes to avoid excessive size."""
@@ -170,11 +171,11 @@ class Morbidostat:
             dilution_ratio = current_OD / target_OD
             volume_to_pump = (dilution_ratio - 1) * self.culture_volume
             media_pump_number = self.get_pump_number("media", 1, "culture", culture)
-            self.interface.inject_volume(media_pump_number, volume_to_pump, verbose=verbose)
-
             if verbose:
                 print(f"Vial {self.cultures[culture-1]} has OD {round(current_OD,3)}, above target OD {target_OD}.")
                 print(f"Pumping {round(volume_to_pump,3)}mL via pump {media_pump_number}.")
+
+            self.interface.inject_volume(media_pump_number, volume_to_pump, verbose=verbose)
 
         else:
             if verbose:
@@ -227,7 +228,7 @@ class Morbidostat:
         self.record_volumes()
         self.record_ODs()
 
-        self.interface.remove_waste(max(volumes) * safety_factor, verbose=True)
+        self.interface.remove_waste(max(min(volumes, 10)), verbose=True)
         self.interface.wait_mixing(5)
         self.record_ODs()
         self.record_volumes()
@@ -257,13 +258,15 @@ class Morbidostat:
         # Adding volume to culture
         for culture in range(1, len(self.cultures) + 1):
             media_pump_number = self.get_pump_number("media", 1, "culture", culture)
-            self.interface.inject_volume(media_pump_number, volume, verbose=verbose)
+            self.interface.inject_volume(media_pump_number, volume, verbose=verbose, max_volume=25)
         self.interface.execute_pumping()
         self.interface.wait_mixing(10)
         self.record_volumes()
 
         # Taking some of that to the phages
-        self.feed_phages([3 for ii in range(6)], verbose=verbose)
+        self.feed_phages(
+            [min(3, 0.75 * volume) for ii in range(len(self.phage_vials))], verbose=verbose, safety_factor=1
+        )
         self.interface.wait_mixing(10)
         self.record_volumes()
 
@@ -282,14 +285,16 @@ class Morbidostat:
         print("Emptying of the cultures vials in 3 steps")
         for ii in range(5):
             self.feed_phages([3 for ii in range(6)], verbose=verbose)
+            self.record_volumes()
             self.interface.wait_mixing(10)
             self.interface.remove_waste(10, verbose)
+            self.record_volumes()
+            print(self.volumes)
         print("Done emptying the culture vials")
         print()
 
-    def fill_cultures(self, verbose: bool = True):
-        """Fill most the culture vials. This is used to replace the sterile water with LB at the beginning
-        of the experiment."""
+    def fill_vials(self, verbose: bool = True):
+        """Fill the vials. This is used to replace the sterile water with LB at the beginning of the experiment."""
         volume = 10
         safety_factor = 2
         print()
@@ -300,6 +305,7 @@ class Morbidostat:
                 self.interface.inject_volume(media_pump_number, volume, verbose=verbose)
             self.interface.execute_pumping()
             self.interface.wait_mixing(10)
+            self.feed_phages([min(3, 0.75 * volume) for ii in range(len(self.phage_vials))], verbose=verbose)
             self.interface.remove_waste(volume * safety_factor, verbose)
 
     def cleaning_sequence(self, nb_cycle: int = 3, volume_cycle: float = 10, wait_time: float = 60):
@@ -316,19 +322,24 @@ class Morbidostat:
 
         for ii in range(nb_cycle):
             print(f"\nCleaning cycle {ii+1}")
-            self.cleaning_cycle(volume_cycle, verbose=True)
+            if ii == 0:  # The vials are empty at the start so fill them
+                self.cleaning_cycle(25, verbose=True)
+            else:
+                self.cleaning_cycle(volume_cycle, verbose=True)
             print(self.volumes)
             print(f"Waiting for {wait_time} seconds.")
             time.sleep(wait_time)
             print()
 
         self.empty_cultures(True)
-        self.record_volumes()
-        print(self.volumes)
         print()
         print("--- Finished cleaning sequence ! ---")
 
 
 if __name__ == "__main__":
     morb = Morbidostat()
-    morb.run()
+    try:
+        # morb.run()
+        pass
+    except:
+        del morb
