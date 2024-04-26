@@ -4,17 +4,14 @@ import pandas as pd
 
 def plot_ODs(filename):
     df = pd.read_csv(filename, sep="\t")
+    df["time"] = df["time"] - df["time"][0]
 
     plt.figure()
-    for ii in range(1, 13):
-        column = df.columns[ii]
-        if "culture" in column:
-            linestyle = "-"
-        elif "phage_vial" in column:
-            linestyle = "--"
-        else:
-            raise ValueError(f"Unexpected column name '{column}'")
-        plt.plot(df["time"] - df["time"][0] / 3600, df[column], label=column, linestyle=linestyle)
+    for ii in range(1, 7):
+        culture = df.columns[ii]
+        phage = df.columns[ii + 6]
+        (line,) = plt.plot(df["time"] / 3600, df[culture], label=culture, linestyle="-")
+        plt.plot(df["time"] / 3600, df[phage], label=phage, linestyle="--", color=line.get_color())
     plt.xlabel("Time [h]")
     plt.ylabel("OD [a.u.]")
     plt.legend()
@@ -23,17 +20,14 @@ def plot_ODs(filename):
 
 def plot_volumes(filename):
     df = pd.read_csv(filename, sep="\t")
+    df["time"] = df["time"] - df["time"][0]
 
     plt.figure()
-    for ii in range(1, 13):
-        column = df.columns[ii]
-        if "culture" in column:
-            linestyle = "-"
-        elif "phage_vial" in column:
-            linestyle = "--"
-        else:
-            raise ValueError(f"Unexpected column name '{column}'")
-        plt.plot(df["time"] - df["time"][0] / 3600, df[column], label=column, linestyle=linestyle)
+    for ii in range(1, 7):
+        culture = df.columns[ii]
+        phage = df.columns[ii + 6]
+        (line,) = plt.plot(df["time"] / 3600, df[culture], label=culture, linestyle="-")
+        plt.plot(df["time"] / 3600, df[phage], label=phage, linestyle="--", color=line.get_color())
     plt.xlabel("Time [h]")
     plt.ylabel("Capacitance [pF]")
     plt.legend()
