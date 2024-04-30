@@ -18,7 +18,7 @@ class Morbidostat:
         self.interface = Interface()
 
         # Vial of the cultures, as defined in Interface class
-        self.cultures = [3, 4, 8, 9, 13, 14]  # Bacterial cultures, they are wbbl+ variant
+        self.cultures = [3, 4, 8, 9, 13, 15]  # Bacterial cultures, they are wbbl+ variant
         self.phage_vials = [1, 2, 6, 7, 11, 12]  # Experiment vials (with phages)
         self.culture_volume = 20  # In milliliters
         self.pumps = []
@@ -108,8 +108,7 @@ class Morbidostat:
         Returns:
             time: time since the experiment start in seconds.
         """
-        # return time.time() - self.experiment_start
-        return time.time()
+        return time.time() - self.experiment_start
 
     def record_ODs(self) -> None:
         """Measures OD in all vials and store these values along with the appropriate experiment time.
@@ -118,7 +117,7 @@ class Morbidostat:
         for vial in self.cultures + self.phage_vials:
             ODs += [self.interface.measure_OD(vial)]
 
-        self.ODs.loc[len(self.ODs)] = [self.experiment_time()] + ODs
+        self.ODs.loc[len(self.ODs)] = [round(time.time(), 1)] + ODs
 
     def record_volumes(self) -> None:
         """Measures volumes of all vials and store these values along with the appropriate experiment time.
@@ -128,7 +127,7 @@ class Morbidostat:
             # volumes += [self.interface.measure_volume(vial),3)]
             volumes += [round(self.interface.measure_LS_capacitance(vial), 3)]
 
-        self.volumes.loc[len(self.volumes)] = [round(self.experiment_time(), 1)] + volumes
+        self.volumes.loc[len(self.volumes)] = [round(time.time(), 1)] + volumes
 
     def save_data(self) -> None:
         """Append the ODs and volumes to the savefiles and clear the dataframes to avoid excessive size."""
@@ -228,12 +227,13 @@ class Morbidostat:
         self.record_volumes()
         self.record_ODs()
 
-        self.interface.remove_waste(max(min(volumes, 10)), verbose=True)
+        # the min is here to account for the max volume of vials
+        self.interface.remove_waste(min(10, max(volumes)) * safety_factor, verbose=True)
         self.interface.wait_mixing(5)
         self.record_ODs()
         self.record_volumes()
 
-    def run(self, cycle_time: int = 120, tot_time: int = 15 * 24 * 3600) -> None:
+    def run(self, cycle_time: int = 180, tot_time: int = 15 * 24 * 3600) -> None:
         print("Starting experiment...")
         self.interface.switch_light(True)
         time.sleep(100)
@@ -338,8 +338,10 @@ class Morbidostat:
 
 if __name__ == "__main__":
     morb = Morbidostat()
-    try:
-        # morb.run()
-        pass
-    except:
-        del morb
+    morb.run()
+
+    # try:
+    #     morb.run()
+    #     pass
+    # except:
+    #     del morb
