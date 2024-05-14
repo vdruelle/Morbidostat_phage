@@ -220,7 +220,7 @@ def test_array_pumping(IOPi_address, run_time=10):
 if __name__ == "__main__":
     # test_I2C_connections()
     # test_ADCPi()
-    # test_LS_connections()
-    test_LS_readings()
+    test_LS_connections()
+    # test_LS_readings()
     # test_pump_sound()
     # test_array_pumping(0x20, 60)

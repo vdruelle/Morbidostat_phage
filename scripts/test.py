@@ -80,9 +80,9 @@ def test_capacitive_measure(sampling_time=0.1):
     CONFIGURATION_VALUE = 49
 
     # Mux switching
-    tca = 0x71
-    bus.write_byte(0x70, 0)
-    bus.write_byte(tca, 1 << 6)
+    tca = 0x70
+    bus.write_byte(0x71, 0)
+    bus.write_byte(tca, 1 << 0)
 
     # Setup AD7150
     write_register(AD7150_I2C_ADDRESS, AD7150_REG_CH1_SETUP, CH1_SETUP_VALUE)
@@ -156,56 +156,7 @@ def switching_speed():
     print(data)
 
 
-def test_pump_settings():
-    """Function to test the pumps as defined in the morbidostat class. The idea is to use each pump one at a time
-    and output the volumes from the level sensors at the same time to control whether there is indeed a change of level
-    in the source and target vial.
-    """
-    from morbidostat import Morbidostat
-
-    def test_media_pump(morb: Morbidostat, culture: int) -> None:
-        pump = morb.get_pump_number("media", 1, "culture", culture)
-        print()
-        print(f"Testing input pump {pump} for culture in vial {morb.cultures[culture-1]}")
-        volumes = [2, 2]
-
-        measured_volume = morb.interface.measure_volume(morb.cultures[culture - 1])
-        print(f"  Measure in vial {morb.cultures[culture - 1]}: {measured_volume}mL")
-        for vol in volumes:
-            morb.interface.inject_volume(pump, vol, run=True, verbose=False)
-            time.sleep(1)
-            measured_volume = morb.interface.measure_volume(morb.cultures[culture - 1])
-            print(f"  Measure in vial {morb.cultures[culture - 1]}: {measured_volume}mL")
-
-    def test_phage_pump(morb: Morbidostat, culture: int, phage_vial: int) -> None:
-        pump = morb.get_pump_number("culture", culture, "phage vial", phage_vial)
-        print()
-        print(
-            f"Testing pump {pump} from vial {morb.cultures[culture-1]} to phage in vial {morb.phage_vials[phage_vial-1]}."
-        )
-        volumes = [1, 1]
-
-        measured_volume = morb.interface.measure_volume(morb.phage_vials[phage_vial - 1])
-        print(f"  Measure in vial {morb.phage_vials[phage_vial - 1]}: {measured_volume}mL")
-        for vol in volumes:
-            morb.interface.inject_volume(pump, vol, run=True, verbose=False)
-            time.sleep(1)
-            measured_volume = morb.interface.measure_volume(morb.phage_vials[phage_vial - 1])
-            print(f"  Measure in vial {morb.phage_vials[phage_vial - 1]}: {measured_volume}mL")
-
-    morb = Morbidostat()
-
-    # Start with empty vials and test the pumps from media to culture
-    morb.interface.remove_waste(10, verbose=True)
-    for culture in range(1, len(morb.cultures) + 1):
-        test_media_pump(morb, culture)
-    for phage_vial in range(1, len(morb.phage_vials) + 1):
-        test_phage_pump(morb, phage_vial, phage_vial)  # culture[0] goes with phage_vial[0] etc...
-    morb.interface.remove_waste(10, verbose=True)
-
-
 if __name__ == "__main__":
-    # test_capacitive_measure()
+    test_capacitive_measure()
     # switching_speed()
-    test_pump_settings()
     pass

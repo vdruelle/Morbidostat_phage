@@ -45,14 +45,14 @@ def calibrate_OD(
 
     print("Preheating LEDs for measurments, please wait 2 minutes.")
     interface.switch_light(True)
-    # time.sleep(120)
+    time.sleep(120)
 
     # Measuring the voltage for all vial + OD standard combo
     for standard in range(nb_standards):  # iterating over all standards
         no_valid_standard = True
         while no_valid_standard:
             print()
-            cur_OD = input(f"Enter OD of standard {standard+1}: ")  # TODO: more robust input handling error
+            cur_OD = input(f"Enter OD of standard {standard+1}: ")
             ODs.append(float(cur_OD))
             no_valid_standard = False
 
@@ -75,8 +75,6 @@ def calibrate_OD(
         else:
             print("Less than 2 good measurements, also using saturated measurements for vial" + str(vial_id))
             slope, intercept, _, _, _ = linregress(ODs, voltages[:, ii])
-        # Probably want to save this info in the output file
-        # Also, why not save all measurements for debugging/post-hoc analysis?
         fit_parameters[ii, 0] = slope
         fit_parameters[ii, 1] = intercept
 
@@ -89,9 +87,11 @@ def calibrate_OD(
 
     # make figure showing calibration
     plt.figure()
-    plt.plot(ODs, voltages, ".-")
+    for ii in range(len(vials)):
+        plt.plot(ODs, voltages[:, ii], ".-", label=vials[ii])
     plt.xlabel("OD standard [a.u.]")
     plt.ylabel("Voltage [V]")
+    plt.legend()
     plt.show()
 
 
@@ -112,11 +112,9 @@ def calibrate_pumps(interface: Interface, filename: str, pumps: list, dt: float 
 
     print(f"\nStarting pump calibration for pumps {pumps}.")
 
-    print("\nLet's start by weighing the vials before the pumping.")
     for pump_idx, pump_id in enumerate(pumps):
-        weight = input(f"    Weight of vial {pump_id}: ")
-        weights[0, pump_idx] = weight
-    print("Weight of vials before pumping has been saved.")
+        weights[0, pump_idx] = 7.65
+    print("Weight of vials before pumping: 7.65g.")
 
     print("\nPut inlet and outlet of all pumps in water.")
     input("When the setup is ready press enter. It will run all the pumps for 50s to fill the tubing.")
@@ -164,7 +162,7 @@ def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
     """
 
     # Pre-fill
-    print("\nStarting calibration for waste pump. Put inlets in water and outlets in an empty vial.")
+    print("\nStarting calibration for waste pump. Put inlets in water (with needles) and outlets in an empty vial.")
     input("When the setup is ready press enter. It will run pump for 20s to fill the tubing.")
     interface.switch_waste_pump(True)
     time.sleep(20)
@@ -188,6 +186,7 @@ def calibrate_waste_pump(interface: Interface, filename: str, dt: float = 20):
     pump_rate = np.mean(volumes) / dt  # mL*s^-1
     print(f"Computing average rate and saving it in {filename}.")
     with open(CALI_PATH + filename, "w") as file:
+        file.write("rate\n")
         file.write(str(pump_rate))
 
 
@@ -223,7 +222,7 @@ def calibrate_level_sensors(
     print(f"Starting calibration for level sensors of vials {vials}.")
     input(f"Put the inlet and outlet of the waste pump in water to pre-fill the tubes, then press enter.")
 
-    # interface.run_waste_pump(15, True, verbose=True)
+    interface.run_waste_pump(15, True, verbose=True)
     print(f"Pre-filling done.")
 
     capacitances = np.zeros((len(pump_times) + 1, len(vials)))
@@ -238,7 +237,7 @@ def calibrate_level_sensors(
 
         for pump_time_idx, t in enumerate(pump_times):
             dt = t - tot_time
-            # interface.run_waste_pump(dt, True, verbose=False)
+            interface.run_waste_pump(dt, True, verbose=False)
             time.sleep(1)
             capacitances[pump_time_idx + 1, vial_idx] = interface.measure_LS_capacitance(vial_id, lag, nb_measures)
             tot_time = t
@@ -246,7 +245,7 @@ def calibrate_level_sensors(
 
         print(f"Calibration of level sensor {vial_id} done.")
         print(f"Emptying vial {vial_id}.")
-        # interface.run_waste_pump(pump_times[-1] + 1.5, False, verbose=False)
+        interface.run_waste_pump(pump_times[-1] + 1.5, False, verbose=False)
 
     interface.switch_waste_pump_direction(False)
 
@@ -332,10 +331,11 @@ if __name__ == "__main__":
     # Like plotting only
 
     interface = Interface()
-    vials = [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14]
-    pumps = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14]
+    # vials = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    vials = [5, 10, 15]
+    pumps = [1, 2, 3, 4, 5, 6, 9, 10, 11, 13, 14, 15]
 
-    choice = input("What would you like to calibrate ? [OD, pumps, waste, WS, concatenate]: ")
+    choice = input("What would you like to calibrate ? [OD, pumps, waste, LS, concatenate]: ")
     if choice == "OD":
         calibrate_OD(interface, "OD.tsv", nb_standards=4, vials=vials)
     elif choice == "pumps":
@@ -351,4 +351,4 @@ if __name__ == "__main__":
         date_string = f"{t.tm_mon:02d}-{t.tm_mday:02d}-{t.tm_hour:02d}h-{t.tm_min:02d}min"
         group_calibrations("OD.tsv", "LS.tsv", "pumps.tsv", "waste_pump.tsv", date_string)
     else:
-        print(f"{choice} is not in the available actions: [OD, pumps, waste, WS, concatenate]")
+        print(f"{choice} is not in the available actions: [OD, pumps, waste, LS, concatenate]")
